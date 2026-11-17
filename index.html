@@ -269,6 +269,7 @@ function createPage() {
           <div class="count"><label class="f">Choices</label>
             <div class="stepper"><button type="button" id="minus" aria-label="Fewer choices">−</button><b id="num">2</b><button type="button" id="plus" aria-label="More choices">+</button></div></div>
           <div id="choices"></div>
+          <div class="hint">Each choice can be a word, a name, or a whole sentence.</div>
         </div>
       </div>
       <div class="card">
@@ -290,9 +291,11 @@ function createPage() {
   document.querySelectorAll('input[name="om"]').forEach(r => r.onchange = syncHint); syncHint();
   // Choice boxes: pick how many, then type each one. Typed text is kept when the count changes.
   const box = document.getElementById("choices"), MIN = 2, MAX = 20;
-  let vals = ["Yes", "No"];
+  // Start empty: placeholders show a choice can be a word OR a full sentence, not just Yes/No.
+  const EXAMPLES = ["e.g. Yes", "e.g. Meet Saturday at the park"];
+  let vals = ["", ""];
   const drawChoices = () => {
-    box.innerHTML = vals.map((v, i) => `<div class="choice-in"><span class="letter">${L(i)}</span><input class="choice" data-i="${i}" maxlength="200" placeholder="Choice ${i + 1}" value="${esc(v)}" required></div>`).join("");
+    box.innerHTML = vals.map((v, i) => `<div class="choice-in"><span class="letter">${L(i)}</span><input class="choice" data-i="${i}" maxlength="200" placeholder="${esc(EXAMPLES[i] || "Type a word or a short sentence")}" value="${esc(v)}" required></div>`).join("");
     document.getElementById("num").textContent = vals.length;
     document.getElementById("minus").disabled = vals.length <= MIN;
     document.getElementById("plus").disabled = vals.length >= MAX;
