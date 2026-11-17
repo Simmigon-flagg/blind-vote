@@ -1,0 +1,5 @@
+-- Applied to the live project as migration "option_requests".
+-- polls.option_mode: 'off' (default) | 'approve' (voters request, creator approves/denies) | 'auto' (write-ins added automatically).
+-- option_requests table: one request per phone per poll; device hash only, never linked to a ballot. RLS-locked.
+-- request_option(poll, device, text) · list_requests(poll, admin) · decide_request(poll, admin, request_id, approve)
+-- get_poll_open returns option_mode + my_request; my_polls_summary returns pending request counts.
