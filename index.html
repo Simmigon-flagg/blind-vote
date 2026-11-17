@@ -114,7 +114,7 @@ async function openVotePage() {
     const dev = deviceId();
     const p = await rpc("get_poll_open", { p_poll: poll, p_device: dev });
     if (p.closed) return resultsPage();
-    if (p.voted) return msg("Already voted", "This phone already voted. Results show here once voting closes.", true);
+    if (p.voted) return msg("Already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results show here once voting closes.", true);
     app.innerHTML = `
       <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous. One vote per phone.</p>
       <form class="card" id="f">
@@ -125,7 +125,11 @@ async function openVotePage() {
       ev.preventDefault();
       const btn = ev.target.querySelector("button"); btn.disabled = true;
       const choice = +new FormData(ev.target).get("c");
-      try { await rpc("cast_vote_open", { p_poll: poll, p_device: dev, p_choice: choice }); msg("Vote recorded", "Thanks. Refreshing this page won't give you another vote.", true); }
+      try {
+        const res = await rpc("cast_vote_open", { p_poll: poll, p_device: dev, p_choice: choice });
+        if (res && res.ok === false) return msg("Already voted", res.message + ". The poll owner can see that a repeat try was blocked.", true);
+        msg("Vote recorded", "Thanks. Refreshing this page won't give you another vote.", true);
+      }
       catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
     };
   } catch (e) { msg("Error", e.message); }
@@ -142,6 +146,8 @@ async function resultsPage() {
         <div><strong>${esc(o)}</strong> <span class="mute">${r.counts[i]}</span></div>
         <div class="bar"><div style="width:${(r.counts[i] / sum * 100).toFixed(1)}%"></div></div>`).join("")}
       </div>
+      ${r.is_admin ? `<div class="card"><strong>🚫 Blocked repeat tries: ${r.blocked || 0}</strong>
+        <div class="mute">A phone that already voted opened the link again or tried to vote again. Private tabs and other phones can't be detected.</div></div>` : ""}
       ${r.is_admin ? `<div class="row"><button id="tog">${r.closed ? "Reopen voting" : "Close voting & reveal"}</button><button class="ghost" id="ref">Refresh</button></div>
         <p class="mute">Voting link (same for everyone): ${esc(base + "?p=" + poll)} · after you close voting, it shows the results.</p>` : ""}`;
     if (r.is_admin) {
