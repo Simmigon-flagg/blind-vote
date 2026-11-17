@@ -28,6 +28,7 @@
   .pl:first-of-type { border-top:0; }
   .bub { flex-shrink:0; padding:4px 12px; border-radius:999px; font-weight:700; font-size:.85rem; color:#fff; }
   .bub.pass { background:#2e9d5b; } .bub.fail { background:#d14343; } .bub.tie { background:#e0b020; color:#1c1c1e; } .bub.open { background:var(--line); color:var(--ink); }
+  .cd { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin:0 0 16px; text-align:center; font-size:1.1rem; }
   .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
 </style>
 </head>
@@ -44,6 +45,15 @@ const q = new URLSearchParams(location.search);
 const base = location.origin + location.pathname;
 // Times are stored in UTC and shown in the viewer's own timezone.
 const fmtTime = iso => new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+// Live countdown in any element with data-closes="ISO". When it hits zero the page reloads to show results.
+const left = ms => { const t = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+  return (d ? d + "d " : "") + (d || h ? h + "h " : "") + m + "m " + String(sec).padStart(2, "0") + "s"; };
+setInterval(() => document.querySelectorAll("[data-closes]").forEach(el => {
+  const ms = new Date(el.dataset.closes) - new Date();
+  el.textContent = ms > 0 ? "⏳ Closes in " + left(ms) : "Voting closed";
+  if (ms <= 0 && el.dataset.reload) { delete el.dataset.reload; setTimeout(() => location.reload(), 1500); }
+}), 1000);
+const clock = (iso, reload) => `<div class="cd"><strong data-closes="${esc(iso)}"${reload ? ' data-reload="1"' : ""}>⏳ Closes in ${left(new Date(iso) - new Date())}</strong><div class="mute">${esc(fmtTime(iso))}</div></div>`;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
 if (!cfg.SUPABASE_URL || !cfg.SUPABASE_KEY) {
@@ -95,13 +105,14 @@ function createPage() {
       const voteUrl = `${base}?p=${r.poll_id}`;
       saveMyPoll({ id: r.poll_id, admin: r.admin_key, question: document.getElementById("qq").value.trim(), closes_at: closesAt.toISOString() });
       app.innerHTML = `
-        <h1>Poll created</h1><p class="sub">Voting closes ${esc(fmtTime(closesAt.toISOString()))}. Save your admin link now. It's shown once and can't be recovered.</p>
+        <h1>Poll created</h1>${clock(closesAt.toISOString())}<p class="sub">Save your admin link now. It's shown once and can't be recovered.</p>
         <div class="card"><label>Your admin link (live results, close voting)</label>
           <div class="links">${esc(adminUrl)}</div>
           <div class="row"><button class="ghost" data-c="${esc(adminUrl)}">Copy admin link</button><a href="${esc(adminUrl)}"><button class="ghost" type="button">Open</button></a></div></div>
         <div class="card"><label>Voting link (send this same link to everyone)</label>
           <div class="links">${esc(voteUrl)}</div>
-          <div class="row"><button class="ghost" data-c="${esc(voteUrl)}">Copy voting link</button></div></div>`;
+          <div class="row"><button class="ghost" data-c="${esc(voteUrl)}">Copy voting link</button><a href="${esc(voteUrl)}"><button type="button">🗳 Vote now</button></a></div>
+          <p class="mute">You vote with this same link, like everyone else: one vote per phone, any time before it closes.</p></div>`;
       app.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.c); b.textContent = "Copied"; });
     } catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
   };
@@ -118,7 +129,7 @@ async function renderMyPolls() {
     const bub = document.querySelector(`#pl${i} .bub`);
     try {
       const r = await rpc("get_results", { p_poll: p.id, p_admin: p.admin });
-      if (!r.closed) { bub.textContent = "Open"; return; }
+      if (!r.closed) { bub.textContent = "Open" + (r.closes_at ? " · " + left(new Date(r.closes_at) - new Date()).replace(/ \d+s$/, "") + " left" : ""); return; }
       if (r.options.length === 2) { // yes/no style
         const [a, b] = [r.counts[0] || 0, r.counts[1] || 0];
         const k = a > b ? "pass" : a < b ? "fail" : "tie";
@@ -159,9 +170,10 @@ async function openVotePage() {
     const dev = deviceId();
     const p = await rpc("get_poll_open", { p_poll: poll, p_device: dev });
     if (p.closed) return resultsPage();
-    if (p.voted) return msg("Already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results show here once voting closes.", true);
+    if (p.voted) { msg("Already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results show here once voting closes.", true);
+      if (p.closes_at) app.insertAdjacentHTML("beforeend", clock(p.closes_at, true)); return; }
     app.innerHTML = `
-      <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous. One vote per phone.${p.closes_at ? " Voting closes " + esc(fmtTime(p.closes_at)) + "." : ""}</p>
+      <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous. One vote per phone.</p>${p.closes_at ? clock(p.closes_at, true) : ""}
       <form class="card" id="f">
         ${p.options.map((o, i) => `<label class="opt"><input type="radio" name="c" value="${i}" required> ${esc(o)}</label>`).join("")}
         ${p.allow_write_in ? `<label class="opt"><input type="radio" name="c" value="other" required> Other: <input id="wi" maxlength="200" placeholder="type your own option"></label>` : ""}
@@ -192,7 +204,7 @@ async function resultsPage() {
     const timeUp = !!r.closes_at && new Date(r.closes_at) <= new Date();
     app.innerHTML = `
       <h1>${esc(r.question)}</h1>
-      <p class="sub">${r.total ? r.voted + " of " + r.total + " voted" : r.voted + (r.voted === 1 ? " vote" : " votes")} · ${r.closed ? "Closed" : "Open"}${r.closes_at ? (r.closed ? "" : " · closes " + esc(fmtTime(r.closes_at))) : ""}</p>
+      <p class="sub">${r.total ? r.voted + " of " + r.total + " voted" : r.voted + (r.voted === 1 ? " vote" : " votes")} · ${r.closed ? "Closed" : "Open"}</p>${r.closes_at && !r.closed ? clock(r.closes_at, true) : ""}
       <div class="card">${r.options.map((o, i) => `
         <div><strong>${esc(o)}</strong> <span class="mute">${r.counts[i]}</span></div>
         <div class="bar"><div style="width:${(r.counts[i] / sum * 100).toFixed(1)}%"></div></div>`).join("")}
