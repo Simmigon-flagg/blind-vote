@@ -1,0 +1,4 @@
+-- Applied to the live project as migration "my_polls_summary_and_delete".
+-- my_polls_summary(p_items jsonb [{id, admin}], max 200): one call returns question, options, counts,
+--   votes, closed, closes_at for every poll whose admin key matches; others come back gone=true.
+-- delete_poll(p_poll, p_admin): deletes the poll + all its votes (cascade). Admin key required.

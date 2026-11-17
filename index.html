@@ -2,38 +2,121 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4338ca">
 <title>Blind Vote</title>
 <style>
-  :root { --bg:#f6f5f2; --card:#fff; --ink:#1c1c1e; --mute:#6b6b70; --line:#e3e1dc; --acc:#2f5d50; --bad:#a33; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#141414; --card:#1e1e1f; --ink:#ececec; --mute:#9a9aa0; --line:#333; --acc:#6fb39c; --bad:#e77; } }
-  * { box-sizing:border-box; }
-  body { margin:0; font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--ink); }
-  main { max-width:560px; margin:0 auto; padding:32px 18px 64px; }
-  h1 { font-size:1.5rem; margin:0 0 4px; } .sub { color:var(--mute); margin:0 0 24px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
-  label { display:block; font-weight:600; margin:14px 0 6px; font-size:.9rem; }
-  input, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
-  textarea { min-height:96px; resize:vertical; }
-  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:11px 18px; font:inherit; font-weight:600; cursor:pointer; }
-  button.ghost { background:transparent; color:var(--acc); border:1px solid var(--line); }
+  :root {
+    --bg:#f4f5f8; --card:#fff; --ink:#15171c; --mute:#6a6f7b; --line:#e4e6ec; --soft:#eef0f5;
+    --acc:#4338ca; --acc-ink:#fff; --acc-soft:#e8e7fb;
+    --pass:#1f9d55; --fail:#d43c3c; --tie:#e3a008; --bad:#c62828;
+    --shadow:0 1px 2px rgba(16,24,40,.05), 0 4px 16px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#0f1115; --card:#181b21; --ink:#eceef2; --mute:#9aa0ab; --line:#2a2e37; --soft:#20242c;
+    --acc:#8b85ff; --acc-ink:#0f1115; --acc-soft:#25234a; --shadow:none; } }
+  * { box-sizing:border-box; } [hidden] { display:none !important; }
+  body { margin:0; font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; }
+  a { color:inherit; }
+
+  /* header */
+  .top { position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(10px);
+         border-bottom:1px solid var(--line); padding:calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px; }
+  .top-in { max-width:640px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .brand { display:flex; align-items:center; gap:8px; font-weight:800; font-size:1.1rem; text-decoration:none; letter-spacing:-.01em; }
+  .brand i { font-style:normal; display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:var(--acc); color:var(--acc-ink); font-size:1rem; }
+  .tabs { display:flex; background:var(--soft); border-radius:10px; padding:3px; }
+  .tabs a { padding:6px 14px; border-radius:8px; font-weight:600; font-size:.9rem; text-decoration:none; color:var(--mute); }
+  .tabs a.on { background:var(--card); color:var(--ink); box-shadow:var(--shadow); }
+
+  main { max-width:640px; margin:0 auto; padding:20px 16px calc(env(safe-area-inset-bottom, 0px) + 64px); }
+  h1 { font-size:1.45rem; line-height:1.25; margin:4px 0 6px; letter-spacing:-.01em; }
+  .sub { color:var(--mute); margin:0 0 18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:14px; box-shadow:var(--shadow); }
+  .card h2 { font-size:1rem; margin:0 0 10px; }
+  label.f { display:block; font-weight:600; margin:16px 0 6px; font-size:.9rem; }
+  label.f:first-child { margin-top:0; }
+  input, textarea { width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:inherit; font:inherit; }
+  input:focus, textarea:focus { outline:2px solid var(--acc); outline-offset:-1px; border-color:transparent; }
+  textarea { min-height:110px; resize:vertical; }
+  .count { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px; }
+  .count label.f { margin:0; }
+  .stepper { display:flex; align-items:center; gap:4px; }
+  .stepper button { width:40px; height:40px; padding:0; font-size:1.2rem; }
+  .stepper b { min-width:32px; text-align:center; font-size:1.1rem; }
+  .choice { margin-top:8px; }
+  .hint { color:var(--mute); font-size:.85rem; margin-top:6px; }
+  button, .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; background:var(--acc); color:var(--acc-ink); border:0; border-radius:10px;
+    padding:11px 18px; font:inherit; font-weight:700; cursor:pointer; text-decoration:none; }
+  button.ghost, .btn.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  button.danger { background:var(--bad); color:#fff; }
+  button.wide { width:100%; }
   button:disabled { opacity:.5; cursor:default; }
-  .opt { display:flex; gap:10px; align-items:center; padding:12px; border:1px solid var(--line); border-radius:8px; margin:8px 0; cursor:pointer; }
-  .opt input { width:auto; } .opt #wi { flex:1; min-width:0; }
-  .err { color:var(--bad); margin-top:10px; } .mute { color:var(--mute); font-size:.9rem; }
-  .links { font-family:ui-monospace,monospace; font-size:.78rem; white-space:pre; overflow:auto; max-height:220px; padding:10px; border:1px solid var(--line); border-radius:8px; }
-  .bar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; margin:4px 0 12px; }
-  .bar > div { height:100%; background:var(--acc); }
-  .pl { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 0; border-top:1px solid var(--line); color:inherit; text-decoration:none; }
-  .pl:first-of-type { border-top:0; }
-  .bub { flex-shrink:0; padding:4px 12px; border-radius:999px; font-weight:700; font-size:.85rem; color:#fff; }
-  .bub.pass { background:#2e9d5b; } .bub.fail { background:#d14343; } .bub.tie { background:#e0b020; color:#1c1c1e; } .bub.open { background:var(--line); color:var(--ink); }
-  .cd { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin:0 0 16px; text-align:center; font-size:1.1rem; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .err { color:var(--bad); margin-top:10px; font-weight:600; }
+  .mute { color:var(--mute); font-size:.88rem; }
+
+  /* voting choices */
+  .opt { display:flex; gap:12px; align-items:center; padding:14px; border:1.5px solid var(--line); border-radius:12px; margin:10px 0; cursor:pointer; font-weight:600; }
+  .opt:has(input:checked) { border-color:var(--acc); background:var(--acc-soft); }
+  .opt input[type=radio], .opt input[type=checkbox] { width:20px; height:20px; accent-color:var(--acc); flex-shrink:0; margin:0; }
+  .opt #wi { flex:1; min-width:0; padding:8px 10px; font-weight:400; }
+  .switch { font-weight:500; }
+
+  /* share boxes */
+  .linkbox { display:flex; gap:8px; align-items:center; }
+  .linkbox code { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:var(--soft); padding:10px 12px; border-radius:10px; font-size:.82rem; }
+
+  /* results */
+  .res { margin:12px 0; }
+  .res-top { display:flex; justify-content:space-between; gap:10px; font-weight:600; }
+  .bar { height:10px; background:var(--soft); border-radius:6px; overflow:hidden; margin-top:6px; }
+  .bar > div { height:100%; background:var(--acc); border-radius:6px; }
+  .res.win .bar > div { background:var(--pass); }
+
+  /* countdown */
+  .cd { display:flex; flex-direction:column; gap:2px; background:var(--acc-soft); border-radius:12px; padding:12px 14px; margin:0 0 14px; }
+  .cd strong { font-variant-numeric:tabular-nums; }
+
+  /* my polls list */
+  .tools { position:sticky; top:calc(env(safe-area-inset-top, 0px) + 57px); z-index:4; background:var(--bg); padding:2px 0 10px; }
+  .search { position:relative; }
+  .search input { padding-left:38px; }
+  .search span { position:absolute; left:13px; top:50%; transform:translateY(-50%); color:var(--mute); }
+  .chips { display:flex; gap:6px; margin-top:10px; overflow-x:auto; }
+  .chip { background:var(--card); color:var(--mute); border:1px solid var(--line); padding:6px 12px; border-radius:999px; font-size:.85rem; font-weight:600; white-space:nowrap; }
+  .chip.on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+  .list { background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; }
+  .item { display:flex; align-items:center; gap:10px; padding:13px 14px; border-top:1px solid var(--line); }
+  .item:first-child { border-top:0; }
+  .item a.main { flex:1; min-width:0; text-decoration:none; }
+  .item .t { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .m { color:var(--mute); font-size:.8rem; }
+  .bub { flex-shrink:0; padding:4px 10px; border-radius:999px; font-weight:700; font-size:.78rem; color:#fff; max-width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bub.pass { background:var(--pass); } .bub.fail { background:var(--fail); } .bub.tie { background:var(--tie); color:#1c1c1e; }
+  .bub.open { background:var(--acc-soft); color:var(--acc); } .bub.gone { background:var(--soft); color:var(--mute); }
+  .icon { background:transparent; color:var(--mute); padding:6px 8px; border-radius:8px; font-size:1rem; }
+  .icon:hover { background:var(--soft); }
+  .confirm { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 14px; background:color-mix(in srgb, var(--bad) 10%, var(--card)); border-top:1px solid var(--line); }
+  .confirm span { flex:1; font-size:.88rem; font-weight:600; min-width:160px; }
+  .confirm button { padding:7px 12px; font-size:.85rem; }
+  .empty { text-align:center; padding:36px 18px; color:var(--mute); }
+  .empty b { display:block; color:var(--ink); font-size:1.05rem; margin-bottom:4px; }
+  .more { display:block; margin:12px auto 0; }
+  .danger-zone { border-color:color-mix(in srgb, var(--bad) 35%, var(--line)); }
+  .back { display:inline-block; color:var(--mute); text-decoration:none; font-weight:600; font-size:.9rem; margin-bottom:6px; }
+  .toast { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 20px); transform:translateX(-50%); background:var(--ink); color:var(--bg);
+    padding:10px 16px; border-radius:10px; font-weight:600; font-size:.9rem; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .toast.show { opacity:1; }
 </style>
 </head>
 <body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="./"><i>🗳</i> Blind Vote</a>
+  <nav class="tabs" id="tabs" hidden><a href="#mine" id="tabMine">My polls</a><a href="#new" id="tabNew">+ New poll</a></nav>
+</div></header>
 <main id="app"><p class="mute">Loading…</p></main>
+<div class="toast" id="toast"></div>
 
 <script src="config.js"></script>
 <script type="module">
@@ -43,21 +126,25 @@ const app = document.getElementById("app");
 const cfg = window.BLIND_VOTE_CONFIG || {};
 const q = new URLSearchParams(location.search);
 const base = location.origin + location.pathname;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 // Times are stored in UTC and shown in the viewer's own timezone.
 const fmtTime = iso => new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
-// Live countdown in any element with data-closes="ISO". When it hits zero the page reloads to show results.
+const fmtDay = iso => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 const left = ms => { const t = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
   return (d ? d + "d " : "") + (d || h ? h + "h " : "") + m + "m " + String(sec).padStart(2, "0") + "s"; };
+const leftShort = ms => left(ms).replace(/ \d+s$/, "");
+// Live countdown in any element with data-closes="ISO". When it hits zero the page reloads to show results.
 setInterval(() => document.querySelectorAll("[data-closes]").forEach(el => {
   const ms = new Date(el.dataset.closes) - new Date();
   el.textContent = ms > 0 ? "⏳ Closes in " + left(ms) : "Voting closed";
   if (ms <= 0 && el.dataset.reload) { delete el.dataset.reload; setTimeout(() => location.reload(), 1500); }
 }), 1000);
-const clock = (iso, reload) => `<div class="cd"><strong data-closes="${esc(iso)}"${reload ? ' data-reload="1"' : ""}>⏳ Closes in ${left(new Date(iso) - new Date())}</strong><div class="mute">${esc(fmtTime(iso))}</div></div>`;
-const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const clock = (iso, reload) => `<div class="cd"><strong data-closes="${esc(iso)}"${reload ? ' data-reload="1"' : ""}>⏳ Closes in ${left(new Date(iso) - new Date())}</strong><span class="mute">${esc(fmtTime(iso))}</span></div>`;
+function toast(t) { const el = document.getElementById("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 1800); }
+async function copy(text) { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch (e) { prompt("Copy this link:", text); } }
 
 if (!cfg.SUPABASE_URL || !cfg.SUPABASE_KEY) {
-  app.innerHTML = `<h1>Blind Vote</h1><div class="card">Not configured yet. Set <code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code> in <code>config.js</code>.</div>`;
+  app.innerHTML = `<div class="card">Not configured yet. Set <code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code> in <code>config.js</code>.</div>`;
   throw new Error("missing config");
 }
 const sb = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY, { auth: { persistSession: false } });
@@ -72,78 +159,175 @@ function deviceId() {
     return d;
   } catch (e) { return crypto.randomUUID(); }
 }
-// "My polls": saved on this phone only, so the creator keeps every admin link.
+// "My polls": saved on this device only, so the creator keeps every admin link.
 const myPolls = () => { try { return JSON.parse(localStorage.getItem("bv_mypolls") || "[]"); } catch (e) { return []; } };
-const saveMyPoll = p => { try { localStorage.setItem("bv_mypolls", JSON.stringify([p, ...myPolls()].slice(0, 100))); } catch (e) {} };
-if (poll && token) votePage(); else if (poll && admin) resultsPage(); else if (poll) openVotePage(); else createPage();
+const setMyPolls = list => { try { localStorage.setItem("bv_mypolls", JSON.stringify(list.slice(0, 200))); } catch (e) {} };
+const saveMyPoll = p => setMyPolls([p, ...myPolls().filter(x => x.id !== p.id)]);
+const forgetPoll = id => setMyPolls(myPolls().filter(x => x.id !== id));
+const adminUrl = (id, key) => `${base}?p=${id}&admin=${encodeURIComponent(key)}`;
+const voteUrl = id => `${base}?p=${id}`;
 
+// ---------- routing ----------
+function route() {
+  if (poll && token) return votePage();
+  if (poll && admin) return resultsPage();
+  if (poll) return openVotePage();
+  const tab = location.hash === "#new" || (location.hash !== "#mine" && !myPolls().length) ? "new" : "mine";
+  document.getElementById("tabs").hidden = false;
+  document.getElementById("tabMine").className = tab === "mine" ? "on" : "";
+  document.getElementById("tabNew").className = tab === "new" ? "on" : "";
+  window.scrollTo(0, 0);
+  tab === "new" ? createPage() : myPollsPage();
+}
+
+// ---------- create ----------
 function createPage() {
   app.innerHTML = `
-    <h1>Blind Vote</h1><p class="sub">One link for everyone. One vote per phone. Votes aren't linked to voters.</p>
+    <h1>New poll</h1><p class="sub">One link for everyone. One vote per phone. Votes aren't linked to voters.</p>
     <form class="card" id="f">
-      <label>Question</label><input id="qq" maxlength="500" required>
-      <label>Options (one per line, as many as you want)</label><textarea id="oo" required>Yes\nNo</textarea>
-      <label class="opt"><input type="checkbox" id="ww"> Let voters add their own option ("Other: ___")</label>
-      <label>Voting closes at (your time)</label><input id="cc" type="datetime-local" required>
-      <div class="mute">Voting stops automatically then and everyone can see the results. You can still close it early.</div>
-      <div class="row"><button>Create poll</button></div><div class="err" id="e"></div>
-    </form>
-    <div class="card" id="mine" hidden><label>My polls (saved on this phone)</label><div id="mineList"></div></div>`;
-  renderMyPolls();
+      <label class="f" for="qq">Question</label><input id="qq" maxlength="500" placeholder="What should we decide?" required>
+      <div class="count"><label class="f">Number of choices</label>
+        <div class="stepper"><button type="button" class="ghost" id="minus" aria-label="Fewer choices">−</button><b id="num">2</b><button type="button" class="ghost" id="plus" aria-label="More choices">+</button></div></div>
+      <div id="choices"></div>
+      <label class="opt switch"><input type="checkbox" id="ww"> Let voters add their own option ("Other: ___")</label>
+      <label class="f" for="cc">Voting closes</label><input id="cc" type="datetime-local" required>
+      <div class="hint">Your time. Voting stops automatically and results open to everyone. You can close it early.</div>
+      <div class="row"><button class="wide">Create poll</button></div><div class="err" id="e"></div>
+    </form>`;
+  // Choice boxes: pick how many, then type each one. Typed text is kept when the count changes.
+  const box = document.getElementById("choices"), MIN = 2, MAX = 20;
+  let vals = ["Yes", "No"];
+  const drawChoices = () => {
+    box.innerHTML = vals.map((v, i) => `<input class="choice" data-i="${i}" maxlength="200" placeholder="Choice ${i + 1}" value="${esc(v)}" required>`).join("");
+    document.getElementById("num").textContent = vals.length;
+    document.getElementById("minus").disabled = vals.length <= MIN;
+    document.getElementById("plus").disabled = vals.length >= MAX;
+    box.querySelectorAll(".choice").forEach(el => el.oninput = () => { vals[+el.dataset.i] = el.value; });
+  };
+  document.getElementById("minus").onclick = () => { if (vals.length > MIN) { vals.pop(); drawChoices(); } };
+  document.getElementById("plus").onclick = () => { if (vals.length < MAX) { vals.push(""); drawChoices(); box.lastElementChild.focus(); } };
+  drawChoices();
   // default: 24 hours from now, in local time
   const cc = document.getElementById("cc"), pad = n => String(n).padStart(2, "0"), dflt = new Date(Date.now() + 864e5);
   cc.value = `${dflt.getFullYear()}-${pad(dflt.getMonth() + 1)}-${pad(dflt.getDate())}T${pad(dflt.getHours())}:${pad(dflt.getMinutes())}`;
   document.getElementById("f").onsubmit = async ev => {
     ev.preventDefault();
-    const btn = ev.target.querySelector("button"); btn.disabled = true;
+    const btn = ev.target.querySelector("button"), err = document.getElementById("e"); btn.disabled = true; err.textContent = "";
     const closesAt = new Date(cc.value); // datetime-local is read as local time
-    if (!(closesAt > new Date())) { document.getElementById("e").textContent = "Pick a close time in the future."; btn.disabled = false; return; }
-    const options = document.getElementById("oo").value.split("\n").map(s => s.trim()).filter(Boolean);
+    if (!(closesAt > new Date())) { err.textContent = "Pick a close time in the future."; btn.disabled = false; return; }
+    const options = vals.map(s => s.trim());
+    if (options.some(o => !o)) { err.textContent = "Fill in every choice, or tap − to remove one."; btn.disabled = false; return; }
+    if (new Set(options.map(o => o.toLowerCase())).size !== options.length) { err.textContent = "Two choices are the same."; btn.disabled = false; return; }
+    const question = document.getElementById("qq").value.trim();
     try {
-      const r = await rpc("create_poll_open", { p_question: document.getElementById("qq").value, p_options: options, p_closes_at: closesAt.toISOString(), p_allow_write_in: document.getElementById("ww").checked });
-      const adminUrl = `${base}?p=${r.poll_id}&admin=${encodeURIComponent(r.admin_key)}`;
-      const voteUrl = `${base}?p=${r.poll_id}`;
-      saveMyPoll({ id: r.poll_id, admin: r.admin_key, question: document.getElementById("qq").value.trim(), closes_at: closesAt.toISOString() });
-      app.innerHTML = `
-        <h1>Poll created</h1>${clock(closesAt.toISOString())}<p class="sub">Save your admin link now. It's shown once and can't be recovered.</p>
-        <div class="card"><label>Your admin link (live results, close voting)</label>
-          <div class="links">${esc(adminUrl)}</div>
-          <div class="row"><button class="ghost" data-c="${esc(adminUrl)}">Copy admin link</button><a href="${esc(adminUrl)}"><button class="ghost" type="button">Open</button></a></div></div>
-        <div class="card"><label>Voting link (send this same link to everyone)</label>
-          <div class="links">${esc(voteUrl)}</div>
-          <div class="row"><button class="ghost" data-c="${esc(voteUrl)}">Copy voting link</button><a href="${esc(voteUrl)}"><button type="button">🗳 Vote now</button></a></div>
-          <p class="mute">You vote with this same link, like everyone else: one vote per phone, any time before it closes.</p></div>`;
-      app.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.c); b.textContent = "Copied"; });
-    } catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
+      const r = await rpc("create_poll_open", { p_question: question, p_options: options, p_closes_at: closesAt.toISOString(), p_allow_write_in: document.getElementById("ww").checked });
+      saveMyPoll({ id: r.poll_id, admin: r.admin_key, question, closes_at: closesAt.toISOString(), created_at: new Date().toISOString() });
+      createdPage(r.poll_id, r.admin_key, question, closesAt.toISOString());
+    } catch (e) { err.textContent = e.message; btn.disabled = false; }
   };
 }
 
-// 2 options: Pass = first (e.g. Yes) wins, Fail = second wins, Tie = equal. More options: winner or Tie. Open polls show "Open".
-async function renderMyPolls() {
-  const list = myPolls(); if (!list.length) return;
-  document.getElementById("mine").hidden = false;
-  const box = document.getElementById("mineList");
-  box.innerHTML = list.map((p, i) => `<a class="pl" id="pl${i}" href="${esc(base + "?p=" + p.id + "&admin=" + encodeURIComponent(p.admin))}">
-    <span>${esc(p.question)}</span><span class="bub open">…</span></a>`).join("");
-  await Promise.all(list.map(async (p, i) => {
-    const bub = document.querySelector(`#pl${i} .bub`);
-    try {
-      const r = await rpc("get_results", { p_poll: p.id, p_admin: p.admin });
-      if (!r.closed) { bub.textContent = "Open" + (r.closes_at ? " · " + left(new Date(r.closes_at) - new Date()).replace(/ \d+s$/, "") + " left" : ""); return; }
-      if (r.options.length === 2) { // yes/no style
-        const [a, b] = [r.counts[0] || 0, r.counts[1] || 0];
-        const k = a > b ? "pass" : a < b ? "fail" : "tie";
-        bub.className = "bub " + k; bub.textContent = { pass: "Pass", fail: "Fail", tie: "Tie" }[k] + ` ${a}–${b}`;
-      } else { // more choices: green = the winner, yellow = tie for first
-        const top = Math.max(...r.counts), leaders = r.options.filter((o, j) => r.counts[j] === top);
-        if (leaders.length === 1) { bub.className = "bub pass"; bub.textContent = leaders[0] + " " + top; }
-        else { bub.className = "bub tie"; bub.textContent = "Tie"; }
-      }
-    } catch (e) { bub.textContent = "Gone"; }
-  }));
+function createdPage(id, key, question, closesAt) {
+  const a = adminUrl(id, key), v = voteUrl(id);
+  app.innerHTML = `
+    <h1>Poll created 🎉</h1><p class="sub">${esc(question)}</p>
+    ${clock(closesAt)}
+    <div class="card"><h2>📣 Voting link: send this to everyone</h2>
+      <div class="linkbox"><code>${esc(v)}</code><button class="ghost" data-c="${esc(v)}">Copy</button></div>
+      <div class="row"><a class="btn" href="${esc(v)}">🗳 Vote now</a></div>
+      <p class="mute">You vote with this same link, like everyone else: one vote per phone, any time before it closes.</p></div>
+    <div class="card"><h2>🔑 Your admin link: keep it private</h2>
+      <div class="linkbox"><code>${esc(a)}</code><button class="ghost" data-c="${esc(a)}">Copy</button></div>
+      <p class="mute">Live results, close early, delete. It's saved in <b>My polls</b> on this device.</p></div>
+    <a class="btn ghost" href="#mine">Go to My polls</a>`;
+  app.querySelectorAll("[data-c]").forEach(b => b.onclick = () => copy(b.dataset.c));
 }
 
-async function votePage() {
+// ---------- my polls ----------
+// 2 options: Pass = first (e.g. Yes) wins, Fail = second wins, Tie = equal. More options: winner or Tie.
+function verdict(s) {
+  if (s.gone) return { k: "gone", t: "Deleted" };
+  if (!s.closed) return { k: "open", t: "Open" + (s.closes_at ? " · " + leftShort(new Date(s.closes_at) - new Date()) : "") };
+  const c = s.counts || [];
+  if (s.options.length === 2) {
+    const [a, b] = [c[0] || 0, c[1] || 0];
+    return a > b ? { k: "pass", t: `Pass ${a}–${b}` } : a < b ? { k: "fail", t: `Fail ${a}–${b}` } : { k: "tie", t: `Tie ${a}–${b}` };
+  }
+  const top = Math.max(0, ...c), leaders = s.options.filter((o, j) => c[j] === top);
+  return leaders.length === 1 ? { k: "pass", t: `${leaders[0]} · ${top}` } : { k: "tie", t: "Tie" };
+}
+
+const PAGE = 20;
+const view = { search: "", filter: "all", shown: PAGE, data: {} }; // data: id -> summary from server
+async function myPollsPage() {
+  const list = myPolls();
+  if (!list.length) {
+    app.innerHTML = `<div class="list"><div class="empty"><b>No polls yet</b>Polls you create on this device show up here.<div class="row" style="justify-content:center"><a class="btn" href="#new">+ Create a poll</a></div></div></div>`;
+    return;
+  }
+  app.innerHTML = `
+    <div class="tools">
+      <div class="search"><span>🔍</span><input id="qs" type="search" placeholder="Search your polls" value="${esc(view.search)}" autocomplete="off"></div>
+      <div class="chips" id="chips">${[["all", "All"], ["open", "Open"], ["closed", "Closed"], ["pass", "Pass"], ["fail", "Fail"], ["tie", "Tie"]]
+        .map(([k, t]) => `<button class="chip${view.filter === k ? " on" : ""}" data-f="${k}">${t}</button>`).join("")}</div>
+    </div>
+    <div id="listWrap"><div class="list"><div class="empty">Loading your polls…</div></div></div>
+    <p class="mute" style="text-align:center;margin-top:14px">Saved on this device only.</p>`;
+  const qs = document.getElementById("qs");
+  qs.oninput = () => { view.search = qs.value; view.shown = PAGE; renderList(); };
+  document.getElementById("chips").onclick = e => {
+    const f = e.target.dataset && e.target.dataset.f; if (!f) return;
+    view.filter = f; view.shown = PAGE;
+    document.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c.dataset.f === f));
+    renderList();
+  };
+  try {
+    const rows = await rpc("my_polls_summary", { p_items: list.map(p => ({ id: p.id, admin: p.admin })) });
+    rows.forEach(r => view.data[r.id] = r);
+  } catch (e) { toast("Couldn't load results — showing saved titles"); }
+  renderList();
+}
+
+function renderList() {
+  const wrap = document.getElementById("listWrap"); if (!wrap) return;
+  const needle = view.search.trim().toLowerCase();
+  const all = myPolls().map(p => ({ p, s: view.data[p.id], v: view.data[p.id] ? verdict(view.data[p.id]) : { k: "open", t: "…" } }));
+  const rows = all.filter(({ p, s, v }) =>
+    (!needle || (s && s.question || p.question || "").toLowerCase().includes(needle)) &&
+    (view.filter === "all" || (view.filter === "closed" ? s && s.closed && !s.gone : v.k === view.filter)));
+  if (!rows.length) { wrap.innerHTML = `<div class="list"><div class="empty"><b>No matches</b>Try a different search or filter.</div></div>`; return; }
+  wrap.innerHTML = `<div class="list">${rows.slice(0, view.shown).map(({ p, s, v }) => `
+    <div class="item" data-id="${esc(p.id)}">
+      <a class="main" href="${esc(adminUrl(p.id, p.admin))}">
+        <div class="t">${esc((s && s.question) || p.question)}</div>
+        <div class="m">${s && !s.gone ? s.votes + (s.votes == 1 ? " vote" : " votes") + " · " : ""}${p.created_at ? "made " + esc(fmtDay(p.created_at)) : ""}</div>
+      </a>
+      <span class="bub ${v.k}" title="${esc(v.t)}">${esc(v.t)}</span>
+      <button class="icon" data-del="${esc(p.id)}" aria-label="Delete poll" title="Delete">🗑</button>
+    </div>`).join("")}</div>
+    ${rows.length > view.shown ? `<button class="ghost more" id="more">Show more (${rows.length - view.shown})</button>` : ""}`;
+  const more = document.getElementById("more");
+  if (more) more.onclick = () => { view.shown += PAGE; renderList(); };
+  wrap.querySelectorAll("[data-del]").forEach(b => b.onclick = () => askDelete(b.closest(".item"), b.dataset.del));
+}
+
+// Inline confirm under the row — no pop-up dialogs.
+function askDelete(item, id) {
+  document.querySelectorAll(".confirm").forEach(c => c.remove());
+  const p = myPolls().find(x => x.id === id), s = view.data[id], gone = s && s.gone;
+  item.insertAdjacentHTML("afterend", `<div class="confirm"><span>${gone ? "Remove it from your list?" : "Delete this poll and all its votes for everyone?"}</span>
+    <button class="danger" id="yesDel">${gone ? "Remove" : "Delete"}</button><button class="ghost" id="noDel">Cancel</button></div>`);
+  document.getElementById("noDel").onclick = () => document.querySelector(".confirm").remove();
+  document.getElementById("yesDel").onclick = async () => {
+    try { if (!gone) await rpc("delete_poll", { p_poll: id, p_admin: p.admin }); }
+    catch (e) { if (!/already deleted/.test(e.message)) { toast(e.message); return; } }
+    forgetPoll(id); delete view.data[id]; toast(gone ? "Removed" : "Poll deleted");
+    myPolls().length ? renderList() : myPollsPage();
+  };
+}
+
+// ---------- voting ----------
+async function votePage() { // one-time personal links (older polls)
   try {
     const p = await rpc("get_poll", { p_poll: poll, p_token: token });
     if (!p.token_valid) return msg("Invalid link", "This voting link isn't valid for this poll.");
@@ -153,13 +337,13 @@ async function votePage() {
       <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous and can only be cast once.</p>
       <form class="card" id="f">
         ${p.options.map((o, i) => `<label class="opt"><input type="radio" name="c" value="${i}" required> ${esc(o)}</label>`).join("")}
-        <div class="row"><button>Submit vote</button></div><div class="err" id="e"></div>
+        <div class="row"><button class="wide">Submit vote</button></div><div class="err" id="e"></div>
       </form>`;
     document.getElementById("f").onsubmit = async ev => {
       ev.preventDefault();
       const btn = ev.target.querySelector("button"); btn.disabled = true;
       const choice = +new FormData(ev.target).get("c");
-      try { await rpc("cast_vote", { p_poll: poll, p_token: token, p_choice: choice }); msg("Vote recorded", "Thanks. Refreshing this page won't give you another vote.", true); }
+      try { await rpc("cast_vote", { p_poll: poll, p_token: token, p_choice: choice }); msg("Vote recorded ✅", "Thanks. Refreshing this page won't give you another vote.", true); }
       catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
     };
   } catch (e) { msg("Error", e.message); }
@@ -171,13 +355,13 @@ async function openVotePage() {
     const p = await rpc("get_poll_open", { p_poll: poll, p_device: dev });
     if (p.closed) return resultsPage();
     if (p.voted) { msg("Already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results show here once voting closes.", true);
-      if (p.closes_at) app.insertAdjacentHTML("beforeend", clock(p.closes_at, true)); return; }
+      if (p.closes_at) app.insertAdjacentHTML("afterbegin", clock(p.closes_at, true)); return; }
     app.innerHTML = `
       <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous. One vote per phone.</p>${p.closes_at ? clock(p.closes_at, true) : ""}
       <form class="card" id="f">
         ${p.options.map((o, i) => `<label class="opt"><input type="radio" name="c" value="${i}" required> ${esc(o)}</label>`).join("")}
         ${p.allow_write_in ? `<label class="opt"><input type="radio" name="c" value="other" required> Other: <input id="wi" maxlength="200" placeholder="type your own option"></label>` : ""}
-        <div class="row"><button>Submit vote</button></div><div class="err" id="e"></div>
+        <div class="row"><button class="wide">Submit vote</button></div><div class="err" id="e"></div>
       </form>`;
     const wi = document.getElementById("wi");
     if (wi) wi.onfocus = () => { document.querySelector('input[value="other"]').checked = true; };
@@ -190,39 +374,65 @@ async function openVotePage() {
       try {
         const res = await rpc("cast_vote_open", { p_poll: poll, p_device: dev, p_choice: writeIn ? -1 : +picked, p_write_in: writeIn });
         if (res && res.ok === false) return msg("Already voted", res.message + ". The poll owner can see that a repeat try was blocked.", true);
-        msg("Vote recorded", "Thanks. Refreshing this page won't give you another vote.", true);
+        msg("Vote recorded ✅", "Thanks. Refreshing this page won't give you another vote.", true);
+        if (p.closes_at) app.insertAdjacentHTML("afterbegin", clock(p.closes_at, true));
       }
       catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
     };
   } catch (e) { msg("Error", e.message); }
 }
 
+// ---------- results / admin ----------
 async function resultsPage() {
   try {
     const r = await rpc("get_results", { p_poll: poll, p_admin: admin });
-    const sum = r.counts.reduce((a, b) => a + b, 0) || 1;
+    const sum = r.counts.reduce((a, b) => a + b, 0) || 1, top = Math.max(0, ...r.counts);
     const timeUp = !!r.closes_at && new Date(r.closes_at) <= new Date();
+    const v = verdict({ ...r, gone: false });
     app.innerHTML = `
+      ${r.is_admin ? `<a class="back" href="./#mine">← My polls</a>` : ""}
       <h1>${esc(r.question)}</h1>
-      <p class="sub">${r.total ? r.voted + " of " + r.total + " voted" : r.voted + (r.voted === 1 ? " vote" : " votes")} · ${r.closed ? "Closed" : "Open"}</p>${r.closes_at && !r.closed ? clock(r.closes_at, true) : ""}
+      <p class="sub">${r.total ? r.voted + " of " + r.total + " voted" : r.voted + (r.voted === 1 ? " vote" : " votes")} · ${r.closed ? "Closed" : "Open"}
+        ${r.closed ? ` <span class="bub ${v.k}">${esc(v.t)}</span>` : ""}</p>
+      ${r.closes_at && !r.closed ? clock(r.closes_at, true) : ""}
       <div class="card">${r.options.map((o, i) => `
-        <div><strong>${esc(o)}</strong> <span class="mute">${r.counts[i]}</span></div>
-        <div class="bar"><div style="width:${(r.counts[i] / sum * 100).toFixed(1)}%"></div></div>`).join("")}
+        <div class="res${r.closed && r.counts[i] === top && top > 0 ? " win" : ""}">
+          <div class="res-top"><span>${esc(o)}</span><span class="mute">${r.counts[i]} · ${Math.round(r.counts[i] / sum * 100)}%</span></div>
+          <div class="bar"><div style="width:${(r.counts[i] / sum * 100).toFixed(1)}%"></div></div></div>`).join("")}
       </div>
-      ${r.is_admin ? `<div class="card"><strong>🚫 Blocked repeat tries: ${r.blocked || 0}</strong>
-        <div class="mute">A phone that already voted opened the link again or tried to vote again. Private tabs and other phones can't be detected.</div></div>` : ""}
-      ${r.is_admin ? `<div class="row">${timeUp ? "" : `<button id="tog">${r.closed ? "Reopen voting" : "Close voting now & reveal"}</button>`}<button class="ghost" id="ref">Refresh</button></div>
-        <p class="mute">Voting link (same for everyone): ${esc(base + "?p=" + poll)} · after you close voting, it shows the results.</p>` : ""}`;
+      ${r.is_admin ? `
+        <div class="card"><h2>📣 Voting link</h2>
+          <div class="linkbox"><code>${esc(voteUrl(poll))}</code><button class="ghost" data-c="${esc(voteUrl(poll))}">Copy</button></div>
+          <p class="mute">Same link for everyone. After voting closes, it shows the results.</p>
+          <div class="row">${timeUp ? "" : `<button id="tog">${r.closed ? "Reopen voting" : "Close voting now"}</button>`}<button class="ghost" id="ref">↻ Refresh</button></div></div>
+        <div class="card"><h2>🚫 Blocked repeat tries: ${r.blocked || 0}</h2>
+          <div class="mute">A phone that already voted opened the link again or tried to vote again. Private tabs and other phones can't be detected.</div></div>
+        <div class="card danger-zone"><h2>Delete poll</h2><div class="mute">Removes the poll and all its votes for everyone. This can't be undone.</div>
+          <div class="row" id="delRow"><button class="ghost" id="del">🗑 Delete poll</button></div></div>` : ""}`;
     if (r.is_admin) {
+      saveMyPoll({ ...(myPolls().find(x => x.id === poll) || {}), id: poll, admin, question: r.question, closes_at: r.closes_at }); // keep it in My polls
+      app.querySelectorAll("[data-c]").forEach(b => b.onclick = () => copy(b.dataset.c));
       if (!timeUp) document.getElementById("tog").onclick = async () => { await rpc("set_closed", { p_poll: poll, p_admin: admin, p_closed: !r.closed }); resultsPage(); };
       document.getElementById("ref").onclick = resultsPage;
+      document.getElementById("del").onclick = () => {
+        document.getElementById("delRow").innerHTML = `<button class="danger" id="delYes">Yes, delete it</button><button class="ghost" id="delNo">Cancel</button>`;
+        document.getElementById("delNo").onclick = resultsPage;
+        document.getElementById("delYes").onclick = async () => {
+          try { await rpc("delete_poll", { p_poll: poll, p_admin: admin }); } catch (e) { toast(e.message); return; }
+          forgetPoll(poll); location.href = "./#mine";
+        };
+      };
     }
-  } catch (e) { msg("Results hidden", e.message); }
+  } catch (e) { msg(/hidden/.test(e.message) ? "Results hidden" : "Not found", /hidden/.test(e.message) ? e.message + "." : "This poll doesn't exist or was deleted."); }
 }
 
 function msg(title, body, withResults) {
-  app.innerHTML = `<h1>${esc(title)}</h1><div class="card">${esc(body)}${withResults ? `<div class="row"><a href="${esc(base + "?p=" + poll)}"><button class="ghost" type="button">View results (when closed)</button></a></div>` : ""}</div>`;
+  app.innerHTML = `<h1>${esc(title)}</h1><div class="card">${esc(body)}${withResults ? `<div class="row"><a class="btn ghost" href="${esc(voteUrl(poll))}">View results (when closed)</a></div>` : ""}</div>`;
 }
+
+// Start last, so every const above (PAGE, view, …) exists before the first page renders.
+window.addEventListener("hashchange", route);
+route();
 </script>
 </body>
 </html>
