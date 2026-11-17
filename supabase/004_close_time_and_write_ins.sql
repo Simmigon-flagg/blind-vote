@@ -1,0 +1,8 @@
+-- Applied to the live project as migrations "poll_close_time" and "write_in_options".
+-- polls.closes_at (timestamptz, UTC): creator picks it; voting auto-closes then (public._is_closed()).
+-- polls.allow_write_in (default false): creator lets voters add their own option.
+-- create_poll_open(question, options, closes_at, allow_write_in)
+-- cast_vote_open(poll, device, choice, write_in): write-in matches an existing option
+--   case-insensitively, else it's appended (max 50 options). Repeats never add options.
+-- get_poll_open / get_results / get_poll / cast_vote respect closes_at.
+-- Full function bodies are in the live database (Supabase → Database → Functions).

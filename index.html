@@ -19,11 +19,15 @@
   button.ghost { background:transparent; color:var(--acc); border:1px solid var(--line); }
   button:disabled { opacity:.5; cursor:default; }
   .opt { display:flex; gap:10px; align-items:center; padding:12px; border:1px solid var(--line); border-radius:8px; margin:8px 0; cursor:pointer; }
-  .opt input { width:auto; }
+  .opt input { width:auto; } .opt #wi { flex:1; min-width:0; }
   .err { color:var(--bad); margin-top:10px; } .mute { color:var(--mute); font-size:.9rem; }
   .links { font-family:ui-monospace,monospace; font-size:.78rem; white-space:pre; overflow:auto; max-height:220px; padding:10px; border:1px solid var(--line); border-radius:8px; }
   .bar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; margin:4px 0 12px; }
   .bar > div { height:100%; background:var(--acc); }
+  .pl { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 0; border-top:1px solid var(--line); color:inherit; text-decoration:none; }
+  .pl:first-of-type { border-top:0; }
+  .bub { flex-shrink:0; padding:4px 12px; border-radius:999px; font-weight:700; font-size:.85rem; color:#fff; }
+  .bub.pass { background:#2e9d5b; } .bub.fail { background:#d14343; } .bub.tie { background:#e0b020; color:#1c1c1e; } .bub.open { background:var(--line); color:var(--ink); }
   .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
 </style>
 </head>
@@ -38,6 +42,8 @@ const app = document.getElementById("app");
 const cfg = window.BLIND_VOTE_CONFIG || {};
 const q = new URLSearchParams(location.search);
 const base = location.origin + location.pathname;
+// Times are stored in UTC and shown in the viewer's own timezone.
+const fmtTime = iso => new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
 if (!cfg.SUPABASE_URL || !cfg.SUPABASE_KEY) {
@@ -56,6 +62,9 @@ function deviceId() {
     return d;
   } catch (e) { return crypto.randomUUID(); }
 }
+// "My polls": saved on this phone only, so the creator keeps every admin link.
+const myPolls = () => { try { return JSON.parse(localStorage.getItem("bv_mypolls") || "[]"); } catch (e) { return []; } };
+const saveMyPoll = p => { try { localStorage.setItem("bv_mypolls", JSON.stringify([p, ...myPolls()].slice(0, 100))); } catch (e) {} };
 if (poll && token) votePage(); else if (poll && admin) resultsPage(); else if (poll) openVotePage(); else createPage();
 
 function createPage() {
@@ -63,19 +72,30 @@ function createPage() {
     <h1>Blind Vote</h1><p class="sub">One link for everyone. One vote per phone. Votes aren't linked to voters.</p>
     <form class="card" id="f">
       <label>Question</label><input id="qq" maxlength="500" required>
-      <label>Options (one per line)</label><textarea id="oo" required>Yes\nNo</textarea>
+      <label>Options (one per line, as many as you want)</label><textarea id="oo" required>Yes\nNo</textarea>
+      <label class="opt"><input type="checkbox" id="ww"> Let voters add their own option ("Other: ___")</label>
+      <label>Voting closes at (your time)</label><input id="cc" type="datetime-local" required>
+      <div class="mute">Voting stops automatically then and everyone can see the results. You can still close it early.</div>
       <div class="row"><button>Create poll</button></div><div class="err" id="e"></div>
-    </form>`;
+    </form>
+    <div class="card" id="mine" hidden><label>My polls (saved on this phone)</label><div id="mineList"></div></div>`;
+  renderMyPolls();
+  // default: 24 hours from now, in local time
+  const cc = document.getElementById("cc"), pad = n => String(n).padStart(2, "0"), dflt = new Date(Date.now() + 864e5);
+  cc.value = `${dflt.getFullYear()}-${pad(dflt.getMonth() + 1)}-${pad(dflt.getDate())}T${pad(dflt.getHours())}:${pad(dflt.getMinutes())}`;
   document.getElementById("f").onsubmit = async ev => {
     ev.preventDefault();
     const btn = ev.target.querySelector("button"); btn.disabled = true;
+    const closesAt = new Date(cc.value); // datetime-local is read as local time
+    if (!(closesAt > new Date())) { document.getElementById("e").textContent = "Pick a close time in the future."; btn.disabled = false; return; }
     const options = document.getElementById("oo").value.split("\n").map(s => s.trim()).filter(Boolean);
     try {
-      const r = await rpc("create_poll_open", { p_question: document.getElementById("qq").value, p_options: options });
+      const r = await rpc("create_poll_open", { p_question: document.getElementById("qq").value, p_options: options, p_closes_at: closesAt.toISOString(), p_allow_write_in: document.getElementById("ww").checked });
       const adminUrl = `${base}?p=${r.poll_id}&admin=${encodeURIComponent(r.admin_key)}`;
       const voteUrl = `${base}?p=${r.poll_id}`;
+      saveMyPoll({ id: r.poll_id, admin: r.admin_key, question: document.getElementById("qq").value.trim(), closes_at: closesAt.toISOString() });
       app.innerHTML = `
-        <h1>Poll created</h1><p class="sub">Save your admin link now. It's shown once and can't be recovered.</p>
+        <h1>Poll created</h1><p class="sub">Voting closes ${esc(fmtTime(closesAt.toISOString()))}. Save your admin link now. It's shown once and can't be recovered.</p>
         <div class="card"><label>Your admin link (live results, close voting)</label>
           <div class="links">${esc(adminUrl)}</div>
           <div class="row"><button class="ghost" data-c="${esc(adminUrl)}">Copy admin link</button><a href="${esc(adminUrl)}"><button class="ghost" type="button">Open</button></a></div></div>
@@ -85,6 +105,31 @@ function createPage() {
       app.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.c); b.textContent = "Copied"; });
     } catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
   };
+}
+
+// 2 options: Pass = first (e.g. Yes) wins, Fail = second wins, Tie = equal. More options: winner or Tie. Open polls show "Open".
+async function renderMyPolls() {
+  const list = myPolls(); if (!list.length) return;
+  document.getElementById("mine").hidden = false;
+  const box = document.getElementById("mineList");
+  box.innerHTML = list.map((p, i) => `<a class="pl" id="pl${i}" href="${esc(base + "?p=" + p.id + "&admin=" + encodeURIComponent(p.admin))}">
+    <span>${esc(p.question)}</span><span class="bub open">…</span></a>`).join("");
+  await Promise.all(list.map(async (p, i) => {
+    const bub = document.querySelector(`#pl${i} .bub`);
+    try {
+      const r = await rpc("get_results", { p_poll: p.id, p_admin: p.admin });
+      if (!r.closed) { bub.textContent = "Open"; return; }
+      if (r.options.length === 2) { // yes/no style
+        const [a, b] = [r.counts[0] || 0, r.counts[1] || 0];
+        const k = a > b ? "pass" : a < b ? "fail" : "tie";
+        bub.className = "bub " + k; bub.textContent = { pass: "Pass", fail: "Fail", tie: "Tie" }[k] + ` ${a}–${b}`;
+      } else { // more choices: green = the winner, yellow = tie for first
+        const top = Math.max(...r.counts), leaders = r.options.filter((o, j) => r.counts[j] === top);
+        if (leaders.length === 1) { bub.className = "bub pass"; bub.textContent = leaders[0] + " " + top; }
+        else { bub.className = "bub tie"; bub.textContent = "Tie"; }
+      }
+    } catch (e) { bub.textContent = "Gone"; }
+  }));
 }
 
 async function votePage() {
@@ -116,17 +161,22 @@ async function openVotePage() {
     if (p.closed) return resultsPage();
     if (p.voted) return msg("Already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results show here once voting closes.", true);
     app.innerHTML = `
-      <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous. One vote per phone.</p>
+      <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous. One vote per phone.${p.closes_at ? " Voting closes " + esc(fmtTime(p.closes_at)) + "." : ""}</p>
       <form class="card" id="f">
         ${p.options.map((o, i) => `<label class="opt"><input type="radio" name="c" value="${i}" required> ${esc(o)}</label>`).join("")}
+        ${p.allow_write_in ? `<label class="opt"><input type="radio" name="c" value="other" required> Other: <input id="wi" maxlength="200" placeholder="type your own option"></label>` : ""}
         <div class="row"><button>Submit vote</button></div><div class="err" id="e"></div>
       </form>`;
+    const wi = document.getElementById("wi");
+    if (wi) wi.onfocus = () => { document.querySelector('input[value="other"]').checked = true; };
     document.getElementById("f").onsubmit = async ev => {
       ev.preventDefault();
       const btn = ev.target.querySelector("button"); btn.disabled = true;
-      const choice = +new FormData(ev.target).get("c");
+      const picked = new FormData(ev.target).get("c");
+      const writeIn = picked === "other" ? wi.value.trim() : null;
+      if (picked === "other" && !writeIn) { document.getElementById("e").textContent = "Type your option, or pick one above."; btn.disabled = false; return; }
       try {
-        const res = await rpc("cast_vote_open", { p_poll: poll, p_device: dev, p_choice: choice });
+        const res = await rpc("cast_vote_open", { p_poll: poll, p_device: dev, p_choice: writeIn ? -1 : +picked, p_write_in: writeIn });
         if (res && res.ok === false) return msg("Already voted", res.message + ". The poll owner can see that a repeat try was blocked.", true);
         msg("Vote recorded", "Thanks. Refreshing this page won't give you another vote.", true);
       }
@@ -139,19 +189,20 @@ async function resultsPage() {
   try {
     const r = await rpc("get_results", { p_poll: poll, p_admin: admin });
     const sum = r.counts.reduce((a, b) => a + b, 0) || 1;
+    const timeUp = !!r.closes_at && new Date(r.closes_at) <= new Date();
     app.innerHTML = `
       <h1>${esc(r.question)}</h1>
-      <p class="sub">${r.total ? r.voted + " of " + r.total + " voted" : r.voted + (r.voted === 1 ? " vote" : " votes")} · ${r.closed ? "Closed" : "Open"}</p>
+      <p class="sub">${r.total ? r.voted + " of " + r.total + " voted" : r.voted + (r.voted === 1 ? " vote" : " votes")} · ${r.closed ? "Closed" : "Open"}${r.closes_at ? (r.closed ? "" : " · closes " + esc(fmtTime(r.closes_at))) : ""}</p>
       <div class="card">${r.options.map((o, i) => `
         <div><strong>${esc(o)}</strong> <span class="mute">${r.counts[i]}</span></div>
         <div class="bar"><div style="width:${(r.counts[i] / sum * 100).toFixed(1)}%"></div></div>`).join("")}
       </div>
       ${r.is_admin ? `<div class="card"><strong>🚫 Blocked repeat tries: ${r.blocked || 0}</strong>
         <div class="mute">A phone that already voted opened the link again or tried to vote again. Private tabs and other phones can't be detected.</div></div>` : ""}
-      ${r.is_admin ? `<div class="row"><button id="tog">${r.closed ? "Reopen voting" : "Close voting & reveal"}</button><button class="ghost" id="ref">Refresh</button></div>
+      ${r.is_admin ? `<div class="row">${timeUp ? "" : `<button id="tog">${r.closed ? "Reopen voting" : "Close voting now & reveal"}</button>`}<button class="ghost" id="ref">Refresh</button></div>
         <p class="mute">Voting link (same for everyone): ${esc(base + "?p=" + poll)} · after you close voting, it shows the results.</p>` : ""}`;
     if (r.is_admin) {
-      document.getElementById("tog").onclick = async () => { await rpc("set_closed", { p_poll: poll, p_admin: admin, p_closed: !r.closed }); resultsPage(); };
+      if (!timeUp) document.getElementById("tog").onclick = async () => { await rpc("set_closed", { p_poll: poll, p_admin: admin, p_closed: !r.closed }); resultsPage(); };
       document.getElementById("ref").onclick = resultsPage;
     }
   } catch (e) { msg("Results hidden", e.message); }
