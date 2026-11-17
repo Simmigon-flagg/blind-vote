@@ -510,24 +510,25 @@ function requestStatus(r) {
 async function resultsPage() {
   try {
     const r = await rpc("get_results", { p_poll: poll, p_admin: admin });
-    const sum = r.counts.reduce((a, b) => a + b, 0), top = Math.max(0, ...r.counts);
-    const timeUp = !!r.closes_at && new Date(r.closes_at) <= new Date();
+    const counts = r.counts || [], sum = counts.reduce((a, b) => a + b, 0), top = Math.max(0, ...counts);
     const v = verdict({ ...r, gone: false });
     const votes = r.total ? `${r.voted} of ${r.total} voted` : `${r.voted} ${r.voted === 1 ? "vote" : "votes"}`;
     const pills = `<span class="pill">🗳 ${votes}</span>` + (r.closed ? `<span class="pill">🔒 Closed</span>` : (r.closes_at ? countdown(r.closes_at, true) + closesPill(r.closes_at) : ""));
     app.innerHTML = `
       ${r.is_admin ? `<a class="back" href="./#mine">← My polls</a>` : ""}
-      ${hero(r.closed ? "Final results" : "Live results · only you can see these", r.question, pills)}
+      ${hero(r.closed ? "Final results" : "Your poll · voting open", r.question, pills)}
       ${r.closed ? `<div style="margin:-4px 0 12px"><span class="bub ${v.k}" style="max-width:none">${esc(v.t)}</span></div>` : ""}
-      <div class="opts">${r.options.map((o, i) => {
-        const pct = sum ? Math.round(r.counts[i] / sum * 100) : 0, win = r.closed && top > 0 && r.counts[i] === top;
+      ${r.closed ? "" : `<div class="notice" style="margin-bottom:12px"><span>🙈</span><div>Results are hidden from everyone, including you, until voting closes.
+        <div class="mute" style="font-weight:500">You can see how many people voted, but not what they picked.</div></div></div>`}
+      <div class="opts">${r.closed ? "" : r.options.map((o, i) => `<div class="res"><span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="pct n">hidden</span></div>`).join("")}${!r.closed ? "" : r.options.map((o, i) => {
+        const pct = sum ? Math.round(counts[i] / sum * 100) : 0, win = top > 0 && counts[i] === top;
         return `<div class="res${win ? " win" : ""}"><div class="fill" style="width:${pct}%"></div><span class="letter">${win ? "🏆" : L(i)}</span>
-          <span>${esc(o)}</span><span class="pct">${pct}% <span class="n">· ${r.counts[i]}</span></span></div>`; }).join("")}</div>
+          <span>${esc(o)}</span><span class="pct">${pct}% <span class="n">· ${counts[i]}</span></span></div>`; }).join("")}</div>
       ${r.is_admin ? `
         <div id="reqs"></div>
         <div class="card" style="margin-top:16px"><h2>📣 Voting link</h2><p class="mute" style="margin:0 0 12px">Same link for everyone. After voting closes, it shows these results.</p>
           <div class="linkbox"><code>${esc(voteUrl(poll))}</code><button class="btn sm" data-c="${esc(voteUrl(poll))}">Copy</button></div>
-          <div class="row">${timeUp ? "" : `<button class="btn ghost sm" id="tog">${r.closed ? "Reopen voting" : "Close voting now"}</button>`}<button class="btn ghost sm" id="ref">↻ Refresh</button></div></div>
+          <div class="row">${r.closed ? "" : `<span id="closeRow"><button class="btn ghost sm" id="tog">Close voting now</button></span>`}<button class="btn ghost sm" id="ref">↻ Refresh</button></div></div>
         <div class="card"><h2>🚫 Blocked repeat tries · ${r.blocked || 0}</h2>
           <p class="mute" style="margin:0">A phone that already voted opened the link again or tried to vote again. Private tabs and other phones can't be detected.</p></div>
         <div class="card danger-zone"><h2>Delete poll</h2><p class="mute" style="margin:0">Removes the poll and all its votes for everyone. This can't be undone.</p>
@@ -535,7 +536,12 @@ async function resultsPage() {
     if (!r.is_admin) return;
     saveMyPoll({ ...(myPolls().find(x => x.id === poll) || {}), id: poll, admin, question: r.question, closes_at: r.closes_at }); // keep it in My polls
     app.querySelectorAll("[data-c]").forEach(b => b.onclick = () => copy(b.dataset.c));
-    if (!timeUp) document.getElementById("tog").onclick = async () => { await rpc("set_closed", { p_poll: poll, p_admin: admin, p_closed: !r.closed }); resultsPage(); };
+    // Closing is final (reopening would allow peeking at totals), so confirm first.
+    if (!r.closed) document.getElementById("tog").onclick = () => {
+      document.getElementById("closeRow").innerHTML = `<button class="btn sm danger" id="closeYes">Close for good & show results</button> <button class="btn sm ghost" id="closeNo">Cancel</button>`;
+      document.getElementById("closeNo").onclick = resultsPage;
+      document.getElementById("closeYes").onclick = async () => { try { await rpc("set_closed", { p_poll: poll, p_admin: admin, p_closed: true }); } catch (e) { toast(e.message); } resultsPage(); };
+    };
     document.getElementById("ref").onclick = resultsPage;
     document.getElementById("del").onclick = () => {
       document.getElementById("delRow").innerHTML = `<button class="btn sm danger" id="delYes">Yes, delete it</button><button class="btn sm ghost" id="delNo">Cancel</button>`;
