@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind Vote</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1c1c1e; --mute:#6b6b70; --line:#e3e1dc; --acc:#2f5d50; --bad:#a33; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141414; --card:#1e1e1f; --ink:#ececec; --mute:#9a9aa0; --line:#333; --acc:#6fb39c; --bad:#e77; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:560px; margin:0 auto; padding:32px 18px 64px; }
+  h1 { font-size:1.5rem; margin:0 0 4px; } .sub { color:var(--mute); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  label { display:block; font-weight:600; margin:14px 0 6px; font-size:.9rem; }
+  input, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
+  textarea { min-height:96px; resize:vertical; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:11px 18px; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--acc); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:default; }
+  .opt { display:flex; gap:10px; align-items:center; padding:12px; border:1px solid var(--line); border-radius:8px; margin:8px 0; cursor:pointer; }
+  .opt input { width:auto; }
+  .err { color:var(--bad); margin-top:10px; } .mute { color:var(--mute); font-size:.9rem; }
+  .links { font-family:ui-monospace,monospace; font-size:.78rem; white-space:pre; overflow:auto; max-height:220px; padding:10px; border:1px solid var(--line); border-radius:8px; }
+  .bar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; margin:4px 0 12px; }
+  .bar > div { height:100%; background:var(--acc); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+</style>
+</head>
+<body>
+<main id="app"><p class="mute">Loading…</p></main>
+
+<script src="config.js"></script>
+<script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm";
+
+const app = document.getElementById("app");
+const cfg = window.BLIND_VOTE_CONFIG || {};
+const q = new URLSearchParams(location.search);
+const base = location.origin + location.pathname;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+if (!cfg.SUPABASE_URL || !cfg.SUPABASE_KEY) {
+  app.innerHTML = `<h1>Blind Vote</h1><div class="card">Not configured yet. Set <code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code> in <code>config.js</code>.</div>`;
+  throw new Error("missing config");
+}
+const sb = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY, { auth: { persistSession: false } });
+const rpc = async (fn, args) => { const { data, error } = await sb.rpc(fn, args); if (error) throw new Error(error.message); return data; };
+
+const poll = q.get("p"), token = q.get("t"), admin = q.get("admin");
+if (poll && token) votePage(); else if (poll) resultsPage(); else createPage();
+
+function createPage() {
+  app.innerHTML = `
+    <h1>Blind Vote</h1><p class="sub">One vote per link. Votes aren't linked to voters.</p>
+    <form class="card" id="f">
+      <label>Question</label><input id="qq" maxlength="500" required>
+      <label>Options (one per line)</label><textarea id="oo" required>Yes\nNo</textarea>
+      <label>Number of voters</label><input id="nn" type="number" min="1" max="500" value="5" required>
+      <div class="row"><button>Create poll</button></div><div class="err" id="e"></div>
+    </form>`;
+  document.getElementById("f").onsubmit = async ev => {
+    ev.preventDefault();
+    const btn = ev.target.querySelector("button"); btn.disabled = true;
+    const options = document.getElementById("oo").value.split("\n").map(s => s.trim()).filter(Boolean);
+    try {
+      const r = await rpc("create_poll", { p_question: document.getElementById("qq").value, p_options: options, p_voters: +document.getElementById("nn").value });
+      const adminUrl = `${base}?p=${r.poll_id}&admin=${encodeURIComponent(r.admin_key)}`;
+      const voterUrls = r.tokens.map(t => `${base}?p=${r.poll_id}&t=${encodeURIComponent(t)}`);
+      app.innerHTML = `
+        <h1>Poll created</h1><p class="sub">Save these now. They are shown once and can't be recovered.</p>
+        <div class="card"><label>Your admin link (live results, close voting)</label>
+          <div class="links">${esc(adminUrl)}</div>
+          <div class="row"><button class="ghost" data-c="${esc(adminUrl)}">Copy admin link</button><a href="${esc(adminUrl)}"><button class="ghost" type="button">Open</button></a></div></div>
+        <div class="card"><label>Voter links (send one to each person)</label>
+          <div class="links">${esc(voterUrls.join("\n"))}</div>
+          <div class="row"><button class="ghost" data-c="${esc(voterUrls.join("\n"))}">Copy all voter links</button></div></div>`;
+      app.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.c); b.textContent = "Copied"; });
+    } catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
+  };
+}
+
+async function votePage() {
+  try {
+    const p = await rpc("get_poll", { p_poll: poll, p_token: token });
+    if (!p.token_valid) return msg("Invalid link", "This voting link isn't valid for this poll.");
+    if (p.token_used) return msg("Already voted", "This link has been used. Your vote was recorded anonymously.", true);
+    if (p.closed) return msg("Voting closed", "This poll is no longer accepting votes.", true);
+    app.innerHTML = `
+      <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous and can only be cast once.</p>
+      <form class="card" id="f">
+        ${p.options.map((o, i) => `<label class="opt"><input type="radio" name="c" value="${i}" required> ${esc(o)}</label>`).join("")}
+        <div class="row"><button>Submit vote</button></div><div class="err" id="e"></div>
+      </form>`;
+    document.getElementById("f").onsubmit = async ev => {
+      ev.preventDefault();
+      const btn = ev.target.querySelector("button"); btn.disabled = true;
+      const choice = +new FormData(ev.target).get("c");
+      try { await rpc("cast_vote", { p_poll: poll, p_token: token, p_choice: choice }); msg("Vote recorded", "Thanks. Refreshing this page won't give you another vote.", true); }
+      catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
+    };
+  } catch (e) { msg("Error", e.message); }
+}
+
+async function resultsPage() {
+  try {
+    const r = await rpc("get_results", { p_poll: poll, p_admin: admin });
+    const sum = r.counts.reduce((a, b) => a + b, 0) || 1;
+    app.innerHTML = `
+      <h1>${esc(r.question)}</h1>
+      <p class="sub">${r.voted} of ${r.total} voted · ${r.closed ? "Closed" : "Open"}</p>
+      <div class="card">${r.options.map((o, i) => `
+        <div><strong>${esc(o)}</strong> <span class="mute">${r.counts[i]}</span></div>
+        <div class="bar"><div style="width:${(r.counts[i] / sum * 100).toFixed(1)}%"></div></div>`).join("")}
+      </div>
+      ${r.is_admin ? `<div class="row"><button id="tog">${r.closed ? "Reopen voting" : "Close voting & reveal"}</button><button class="ghost" id="ref">Refresh</button></div>
+        <p class="mute">Once closed, voters can see results at: ${esc(base + "?p=" + poll)}</p>` : ""}`;
+    if (r.is_admin) {
+      document.getElementById("tog").onclick = async () => { await rpc("set_closed", { p_poll: poll, p_admin: admin, p_closed: !r.closed }); resultsPage(); };
+      document.getElementById("ref").onclick = resultsPage;
+    }
+  } catch (e) { msg("Results hidden", e.message); }
+}
+
+function msg(title, body, withResults) {
+  app.innerHTML = `<h1>${esc(title)}</h1><div class="card">${esc(body)}${withResults ? `<div class="row"><a href="${esc(base + "?p=" + poll)}"><button class="ghost" type="button">View results (when closed)</button></a></div>` : ""}</div>`;
+}
+</script>
+</body>
+</html>
