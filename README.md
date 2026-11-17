@@ -2,7 +2,7 @@
 
 Single-question anonymous poll. Static page (GitHub Pages) + Supabase.
 
-- Creator gets one **admin link** and N **one-time voter links**.
+- Creator gets one **admin link** and one **voting link** to share with everyone (one vote per phone).
 - Each voter link works once, enforced server-side (refresh, incognito, other device: no extra vote).
 - Ballots store only the choice: no token, no voter ID, no timestamp.
 - Results are visible to the admin live, and to everyone after the admin closes voting.

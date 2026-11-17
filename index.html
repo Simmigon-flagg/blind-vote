@@ -48,15 +48,22 @@ const sb = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY, { auth: { persistSes
 const rpc = async (fn, args) => { const { data, error } = await sb.rpc(fn, args); if (error) throw new Error(error.message); return data; };
 
 const poll = q.get("p"), token = q.get("t"), admin = q.get("admin");
-if (poll && token) votePage(); else if (poll) resultsPage(); else createPage();
+// One random id per browser, so the shared link gives each device one vote (refresh can't re-vote).
+function deviceId() {
+  try {
+    let d = localStorage.getItem("bv_device");
+    if (!d) { d = crypto.randomUUID(); localStorage.setItem("bv_device", d); }
+    return d;
+  } catch (e) { return crypto.randomUUID(); }
+}
+if (poll && token) votePage(); else if (poll && admin) resultsPage(); else if (poll) openVotePage(); else createPage();
 
 function createPage() {
   app.innerHTML = `
-    <h1>Blind Vote</h1><p class="sub">One vote per link. Votes aren't linked to voters.</p>
+    <h1>Blind Vote</h1><p class="sub">One link for everyone. One vote per phone. Votes aren't linked to voters.</p>
     <form class="card" id="f">
       <label>Question</label><input id="qq" maxlength="500" required>
       <label>Options (one per line)</label><textarea id="oo" required>Yes\nNo</textarea>
-      <label>Number of voters</label><input id="nn" type="number" min="1" max="500" value="5" required>
       <div class="row"><button>Create poll</button></div><div class="err" id="e"></div>
     </form>`;
   document.getElementById("f").onsubmit = async ev => {
@@ -64,17 +71,17 @@ function createPage() {
     const btn = ev.target.querySelector("button"); btn.disabled = true;
     const options = document.getElementById("oo").value.split("\n").map(s => s.trim()).filter(Boolean);
     try {
-      const r = await rpc("create_poll", { p_question: document.getElementById("qq").value, p_options: options, p_voters: +document.getElementById("nn").value });
+      const r = await rpc("create_poll_open", { p_question: document.getElementById("qq").value, p_options: options });
       const adminUrl = `${base}?p=${r.poll_id}&admin=${encodeURIComponent(r.admin_key)}`;
-      const voterUrls = r.tokens.map(t => `${base}?p=${r.poll_id}&t=${encodeURIComponent(t)}`);
+      const voteUrl = `${base}?p=${r.poll_id}`;
       app.innerHTML = `
-        <h1>Poll created</h1><p class="sub">Save these now. They are shown once and can't be recovered.</p>
+        <h1>Poll created</h1><p class="sub">Save your admin link now. It's shown once and can't be recovered.</p>
         <div class="card"><label>Your admin link (live results, close voting)</label>
           <div class="links">${esc(adminUrl)}</div>
           <div class="row"><button class="ghost" data-c="${esc(adminUrl)}">Copy admin link</button><a href="${esc(adminUrl)}"><button class="ghost" type="button">Open</button></a></div></div>
-        <div class="card"><label>Voter links (send one to each person)</label>
-          <div class="links">${esc(voterUrls.join("\n"))}</div>
-          <div class="row"><button class="ghost" data-c="${esc(voterUrls.join("\n"))}">Copy all voter links</button></div></div>`;
+        <div class="card"><label>Voting link (send this same link to everyone)</label>
+          <div class="links">${esc(voteUrl)}</div>
+          <div class="row"><button class="ghost" data-c="${esc(voteUrl)}">Copy voting link</button></div></div>`;
       app.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.c); b.textContent = "Copied"; });
     } catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
   };
@@ -102,19 +109,41 @@ async function votePage() {
   } catch (e) { msg("Error", e.message); }
 }
 
+async function openVotePage() {
+  try {
+    const dev = deviceId();
+    const p = await rpc("get_poll_open", { p_poll: poll, p_device: dev });
+    if (p.closed) return resultsPage();
+    if (p.voted) return msg("Already voted", "This phone already voted. Results show here once voting closes.", true);
+    app.innerHTML = `
+      <h1>${esc(p.question)}</h1><p class="sub">Your vote is anonymous. One vote per phone.</p>
+      <form class="card" id="f">
+        ${p.options.map((o, i) => `<label class="opt"><input type="radio" name="c" value="${i}" required> ${esc(o)}</label>`).join("")}
+        <div class="row"><button>Submit vote</button></div><div class="err" id="e"></div>
+      </form>`;
+    document.getElementById("f").onsubmit = async ev => {
+      ev.preventDefault();
+      const btn = ev.target.querySelector("button"); btn.disabled = true;
+      const choice = +new FormData(ev.target).get("c");
+      try { await rpc("cast_vote_open", { p_poll: poll, p_device: dev, p_choice: choice }); msg("Vote recorded", "Thanks. Refreshing this page won't give you another vote.", true); }
+      catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
+    };
+  } catch (e) { msg("Error", e.message); }
+}
+
 async function resultsPage() {
   try {
     const r = await rpc("get_results", { p_poll: poll, p_admin: admin });
     const sum = r.counts.reduce((a, b) => a + b, 0) || 1;
     app.innerHTML = `
       <h1>${esc(r.question)}</h1>
-      <p class="sub">${r.voted} of ${r.total} voted · ${r.closed ? "Closed" : "Open"}</p>
+      <p class="sub">${r.total ? r.voted + " of " + r.total + " voted" : r.voted + (r.voted === 1 ? " vote" : " votes")} · ${r.closed ? "Closed" : "Open"}</p>
       <div class="card">${r.options.map((o, i) => `
         <div><strong>${esc(o)}</strong> <span class="mute">${r.counts[i]}</span></div>
         <div class="bar"><div style="width:${(r.counts[i] / sum * 100).toFixed(1)}%"></div></div>`).join("")}
       </div>
       ${r.is_admin ? `<div class="row"><button id="tog">${r.closed ? "Reopen voting" : "Close voting & reveal"}</button><button class="ghost" id="ref">Refresh</button></div>
-        <p class="mute">Once closed, voters can see results at: ${esc(base + "?p=" + poll)}</p>` : ""}`;
+        <p class="mute">Voting link (same for everyone): ${esc(base + "?p=" + poll)} · after you close voting, it shows the results.</p>` : ""}`;
     if (r.is_admin) {
       document.getElementById("tog").onclick = async () => { await rpc("set_closed", { p_poll: poll, p_admin: admin, p_closed: !r.closed }); resultsPage(); };
       document.getElementById("ref").onclick = resultsPage;
