@@ -1,0 +1,9 @@
+-- Applied to the live project as migrations "hide_live_totals_from_admin", "closing_is_final",
+-- and "expected_voters_turnout_autoclose_shrink".
+-- get_results / my_polls_summary: per-option counts are null until the poll is closed (admin included).
+-- set_closed: closing is final (no reopen).
+-- polls.expected_voters (1-500) + polls.shrunk:
+--   cast_vote_open closes the poll when votes >= expected, and once votes >= ceil(expected * 0.8)
+--   it cuts the time left to a quarter (one time).
+-- poll_status(poll): closed, closes_at, votes, expected, shrunk (turnout only; used for live refresh).
+-- create_poll_open(..., p_expected int).

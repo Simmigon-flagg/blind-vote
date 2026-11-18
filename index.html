@@ -173,6 +173,15 @@
   .done { text-align:center; padding:34px 22px; }
   .done .big { width:64px; height:64px; margin:0 auto 12px; border-radius:20px; display:grid; place-items:center; font-size:1.9rem; background:var(--pass-soft); }
   .done.warn .big { background:var(--tie-soft); }
+  .turn { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:16px 18px; margin-bottom:14px; box-shadow:var(--shadow); }
+  .turn-top { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .turn-num { font-size:2.3rem; font-weight:800; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+  .turn-num small { font-size:1.35rem; color:var(--mute); font-weight:800; }
+  .turn-lbl { font-weight:800; font-size:1.05rem; }
+  .turn-bar { height:12px; border-radius:7px; background:var(--soft); overflow:hidden; margin-top:12px; }
+  .turn-bar > div { height:100%; border-radius:7px; background:linear-gradient(90deg, var(--acc), var(--acc2)); transition:width .5s; }
+  .turn .mute { margin-top:8px; }
+  .stepper input { width:52px; text-align:center; border:0 !important; background:transparent !important; box-shadow:none !important; font-weight:800; padding:0 !important; }
   .danger-zone { border-color:color-mix(in srgb, var(--fail) 30%, var(--line)); }
   .toast { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 96px); transform:translate(-50%, 10px); background:var(--ink); color:var(--bg);
            padding:11px 18px; border-radius:14px; font-weight:700; font-size:.88rem; opacity:0; transition:.2s; pointer-events:none; z-index:20; }
@@ -213,7 +222,35 @@ setInterval(() => document.querySelectorAll("[data-closes]").forEach(el => {
   if (ms <= 0 && el.dataset.reload) { delete el.dataset.reload; setTimeout(() => location.reload(), 1500); }
 }), 1000);
 const countdown = (iso, reload) => `<span class="pill" title="${esc(fmtTime(iso))}" data-closes="${esc(iso)}"${reload ? ' data-reload="1"' : ""}>⏳ ${left(new Date(iso) - new Date())} left</span>`;
-const closesPill = iso => `<span class="pill">📅 ${esc(fmtTime(iso))}</span>`;
+const closesPill = iso => `<span class="pill" data-closes-text>📅 ${esc(fmtTime(iso))}</span>`;
+// Turnout: HOW MANY voted (never what). Big and first, so it's obvious at a glance.
+function turnoutInner(votes, expected, closed, shrunk) {
+  const pct = expected ? Math.min(100, Math.round(votes / expected * 100)) : 0, waiting = expected ? Math.max(0, expected - votes) : 0;
+  return `<div class="turn-top"><span class="turn-num">${votes}${expected ? ` <small>of ${expected}</small>` : ""}</span>
+      <span class="turn-lbl">${expected ? "people voted" : (votes == 1 ? "person voted" : "people voted")}</span></div>
+    ${expected ? `<div class="turn-bar"><div style="width:${pct}%"></div></div>` : ""}
+    ${closed || !expected ? "" : `<div class="mute">${waiting ? `Waiting on ${waiting} more. Voting closes as soon as everyone has voted.` : "Everyone has voted."}${shrunk ? " ⏱ Most people have voted, so the deadline was shortened." : ""}</div>`}`;
+}
+const turnout = (votes, expected, closed, shrunk) => `<div class="turn" id="turn">${turnoutInner(votes, expected, closed, shrunk)}</div>`;
+// Live refresh every 20s while an open poll is on screen: turnout, a shortened deadline, and auto-close.
+let liveTimer = null;
+function watchPoll(now) {
+  clearInterval(liveTimer);
+  const tick = async () => {
+    const box = document.getElementById("turn"); if (!box) return clearInterval(liveTimer);
+    try {
+      const st = await rpc("poll_status", { p_poll: poll });
+      if (st.closed) { clearInterval(liveTimer); return location.reload(); }
+      box.innerHTML = turnoutInner(st.votes, st.expected, false, st.shrunk);
+      if (st.closes_at) {
+        document.querySelectorAll("[data-closes]").forEach(el => el.dataset.closes = st.closes_at);
+        document.querySelectorAll("[data-closes-text]").forEach(el => el.textContent = "📅 " + fmtTime(st.closes_at));
+      }
+    } catch (e) {}
+  };
+  liveTimer = setInterval(tick, 20000);
+  if (now) tick();
+}
 const hero = (kicker, title, pills) => `<section class="hero"><div class="kicker">${kicker}</div><h1>${esc(title)}</h1><div class="pills">${pills}</div></section>`;
 function toast(t) { const el = document.getElementById("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 1800); }
 async function copy(text) { try { await navigator.clipboard.writeText(text); toast("Link copied"); } catch (e) { prompt("Copy this link:", text); } }
@@ -280,6 +317,9 @@ function createPage() {
             <label><input type="radio" name="om" value="auto">Yes, auto-add</label>
           </div>
           <div class="hint" id="omHint"></div></div>
+        <div class="field"><div class="count"><label class="f" for="evIn">Expected voters</label>
+            <div class="stepper"><button type="button" id="evMinus" aria-label="Fewer voters">−</button><input id="evIn" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="7"><button type="button" id="evPlus" aria-label="More voters">+</button></div></div>
+          <div class="hint">How many people should vote. Everyone sees how many have voted (never what they picked). Voting closes as soon as everyone has voted. Once most have (80%), the time left is cut to a quarter.</div></div>
         <div class="field"><label class="f" for="cc">Voting closes</label><input id="cc" type="datetime-local" required>
           <div class="hint">Your time. Voting stops automatically and results open to everyone. You can close it early.</div></div>
       </div>
@@ -304,6 +344,9 @@ function createPage() {
   document.getElementById("minus").onclick = () => { if (vals.length > MIN) { vals.pop(); drawChoices(); } };
   document.getElementById("plus").onclick = () => { if (vals.length < MAX) { vals.push(""); drawChoices(); box.querySelector(".choice-in:last-child input").focus(); } };
   drawChoices();
+  const evIn = document.getElementById("evIn"), evStep = d => { evIn.value = Math.min(500, Math.max(1, (parseInt(evIn.value, 10) || 7) + d)); };
+  document.getElementById("evMinus").onclick = () => evStep(-1);
+  document.getElementById("evPlus").onclick = () => evStep(1);
   // default: 24 hours from now, in local time
   const cc = document.getElementById("cc"), pad = n => String(n).padStart(2, "0"), dflt = new Date(Date.now() + 864e5);
   cc.value = `${dflt.getFullYear()}-${pad(dflt.getMonth() + 1)}-${pad(dflt.getDate())}T${pad(dflt.getHours())}:${pad(dflt.getMinutes())}`;
@@ -318,19 +361,21 @@ function createPage() {
     if (new Set(options.map(o => o.toLowerCase())).size !== options.length) return fail("Two choices are the same.");
     const question = document.getElementById("qq").value.trim();
     const mode = document.querySelector('input[name="om"]:checked').value;
+    const expected = parseInt(evIn.value, 10);
+    if (!(expected >= 1 && expected <= 500) || String(expected) !== evIn.value.trim()) return fail("How many people will vote? Enter a number from 1 to 500.");
     try {
-      const r = await rpc("create_poll_open", { p_question: question, p_options: options, p_closes_at: closesAt.toISOString(), p_option_mode: mode });
+      const r = await rpc("create_poll_open", { p_question: question, p_options: options, p_closes_at: closesAt.toISOString(), p_option_mode: mode, p_expected: expected });
       saveMyPoll({ id: r.poll_id, admin: r.admin_key, question, closes_at: closesAt.toISOString(), created_at: new Date().toISOString() });
-      createdPage(r.poll_id, r.admin_key, question, closesAt.toISOString());
+      createdPage(r.poll_id, r.admin_key, question, closesAt.toISOString(), expected);
     } catch (e) { fail(e.message); }
   };
 }
 
-function createdPage(id, key, question, closesAt) {
+function createdPage(id, key, question, closesAt, expected) {
   const a = adminUrl(id, key), v = voteUrl(id);
   window.scrollTo(0, 0);
   app.innerHTML = `
-    ${hero("Poll created 🎉", question, countdown(closesAt) + closesPill(closesAt))}
+    ${hero("Poll created 🎉", question, countdown(closesAt) + closesPill(closesAt) + `<span class="pill">👥 ${expected} expected</span>`)}
     <div class="card"><h2>📣 Share this link with everyone</h2><p class="mute" style="margin:0 0 12px">Everyone uses the same link. One vote per phone.</p>
       <div class="linkbox"><code>${esc(v)}</code><button class="btn sm" data-c="${esc(v)}">Copy</button></div>
       <div class="row"><a class="btn ghost wide" href="${esc(v)}">🗳 Cast my own vote</a></div></div>
@@ -341,12 +386,13 @@ function createdPage(id, key, question, closesAt) {
 }
 
 // ---------- my polls ----------
-// 2 options: Pass = first (e.g. Yes) wins, Fail = second wins, Tie = equal. More options: winner or Tie.
+// Yes/No polls: Pass = Yes wins, Fail = No wins, Tie = equal. Any other choices: the winner, or Tie.
+const YESNO = /^(yes|yeah|yep|pass|approve|agree|for|in favor)$/i;
 function verdict(s) {
   if (s.gone) return { k: "gone", t: "Deleted" };
   if (!s.closed) return { k: "open", t: "Open" + (s.closes_at ? " · " + leftShort(new Date(s.closes_at) - new Date()) : "") };
   const c = s.counts || [];
-  if (s.options.length === 2) {
+  if (s.options.length === 2 && YESNO.test(s.options[0].trim())) {
     const [a, b] = [c[0] || 0, c[1] || 0];
     return a > b ? { k: "pass", t: `Pass ${a}–${b}` } : a < b ? { k: "fail", t: `Fail ${a}–${b}` } : { k: "tie", t: `Tie ${a}–${b}` };
   }
@@ -403,7 +449,7 @@ function renderList() {
     <div class="pcard ${v.k}" data-id="${esc(p.id)}">
       <a class="main" href="${esc(adminUrl(p.id, p.admin))}">
         <div class="t">${esc((s && s.question) || p.question)}</div>
-        <div class="m">${s && !s.gone ? s.votes + (s.votes == 1 ? " vote" : " votes") : ""}${p.created_at ? " · " + esc(fmtDay(p.created_at)) : ""}${s && s.pending ? ` · <span class="req">${s.pending} request${s.pending == 1 ? "" : "s"}</span>` : ""}</div>
+        <div class="m">${s && !s.gone ? (s.expected ? s.votes + " of " + s.expected + " voted" : s.votes + (s.votes == 1 ? " vote" : " votes")) : ""}${p.created_at ? " · " + esc(fmtDay(p.created_at)) : ""}${s && s.pending ? ` · <span class="req">${s.pending} request${s.pending == 1 ? "" : "s"}</span>` : ""}</div>
       </a>
       <span class="bub ${v.k}" title="${esc(v.t)}">${esc(v.t)}</span>
       <button class="icon" data-del="${esc(p.id)}" aria-label="Delete poll" title="Delete">${ICON_TRASH}</button>
@@ -460,13 +506,14 @@ async function openVotePage() {
     const p = await rpc("get_poll_open", { p_poll: poll, p_device: dev });
     if (p.closed) return resultsPage();
     const pills = (p.closes_at ? countdown(p.closes_at, true) + closesPill(p.closes_at) : "") + `<span class="pill">🔒 Anonymous</span>`;
+    const head = (votes = p.votes) => hero("Blind vote", p.question, pills) + turnout(votes, p.expected, false, p.shrunk);
     if (p.voted) {
-      app.innerHTML = hero("Blind vote", p.question, pills) +
+      app.innerHTML = head() +
         doneCard("🙌", "You already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results appear here when voting closes.", true);
-      return;
+      watchPoll(); return;
     }
     const req = p.my_request;
-    app.innerHTML = `${hero("Blind vote", p.question, pills)}
+    app.innerHTML = `${head()}
       <form id="f">
         ${optCards(p.options, p.option_mode === "auto" ? `<label class="opt"><input type="radio" name="c" value="other" required><span class="letter">+</span>Other <input id="wi" maxlength="200" placeholder="type your own"><span class="check"></span></label>` : "")}
         <div class="row"><button class="btn wide">Submit vote</button></div><div class="err" id="e"></div>
@@ -476,6 +523,7 @@ async function openVotePage() {
         <form id="rf" class="choice-in" style="margin:0"><input id="rt" maxlength="200" placeholder="Suggest an option" required><button class="btn sm">Send</button></form>
         <div class="err" id="re"></div>`}</div>` : ""}
       <p class="mute" style="text-align:center;margin-top:14px">Your vote isn't linked to you. One vote per phone.</p>`;
+    watchPoll();
     const wi = document.getElementById("wi");
     if (wi) wi.onfocus = () => { document.querySelector('input[value="other"]').checked = true; };
     const rf = document.getElementById("rf");
@@ -495,8 +543,9 @@ async function openVotePage() {
       try {
         const res = await rpc("cast_vote_open", { p_poll: poll, p_device: dev, p_choice: writeIn ? -1 : +picked, p_write_in: writeIn });
         window.scrollTo(0, 0);
-        if (res && res.ok === false) { app.innerHTML = hero("Blind vote", p.question, pills) + doneCard("🙌", "You already voted", res.message + ". The poll owner can see a repeat try was blocked.", true); return; }
-        app.innerHTML = hero("Blind vote", p.question, pills) + doneCard("✅", "Vote recorded", "Thanks! Your vote is anonymous. Results appear here when voting closes.");
+        if (res && res.ok === false) { app.innerHTML = head() + doneCard("🙌", "You already voted", res.message + ". The poll owner can see a repeat try was blocked.", true); watchPoll(true); return; }
+        app.innerHTML = head(p.votes + 1) + doneCard("✅", "Vote recorded", "Thanks! Your vote is anonymous. Results appear here when voting closes.");
+        watchPoll(true); // refresh now: this vote may have shortened the deadline or closed the poll
       }
       catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
     };
@@ -515,11 +564,12 @@ async function resultsPage() {
     const r = await rpc("get_results", { p_poll: poll, p_admin: admin });
     const counts = r.counts || [], sum = counts.reduce((a, b) => a + b, 0), top = Math.max(0, ...counts);
     const v = verdict({ ...r, gone: false });
-    const votes = r.total ? `${r.voted} of ${r.total} voted` : `${r.voted} ${r.voted === 1 ? "vote" : "votes"}`;
-    const pills = `<span class="pill">🗳 ${votes}</span>` + (r.closed ? `<span class="pill">🔒 Closed</span>` : (r.closes_at ? countdown(r.closes_at, true) + closesPill(r.closes_at) : ""));
+    const expected = r.expected || r.total || null;
+    const pills = (r.closed ? `<span class="pill">🔒 Closed</span>` : (r.closes_at ? countdown(r.closes_at, true) + closesPill(r.closes_at) : ""));
     app.innerHTML = `
       ${r.is_admin ? `<a class="back" href="./#mine">← My polls</a>` : ""}
       ${hero(r.closed ? "Final results" : "Your poll · voting open", r.question, pills)}
+      ${turnout(r.voted, expected, r.closed, r.shrunk)}
       ${r.closed ? `<div style="margin:-4px 0 12px"><span class="bub ${v.k}" style="max-width:none">${esc(v.t)}</span></div>` : ""}
       ${r.closed ? "" : `<div class="notice" style="margin-bottom:12px"><span>🙈</span><div>Results are hidden from everyone, including you, until voting closes.
         <div class="mute" style="font-weight:500">You can see how many people voted, but not what they picked.</div></div></div>`}
@@ -555,6 +605,7 @@ async function resultsPage() {
       };
     };
     renderRequests(r.closed);
+    if (!r.closed) watchPoll();
   } catch (e) { /hidden/.test(e.message) ? msg("Results are hidden", "They'll show here once voting closes.", "🔒") : msg("Not found", "This poll doesn't exist or was deleted."); }
 }
 
