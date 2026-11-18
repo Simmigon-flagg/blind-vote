@@ -229,7 +229,7 @@ function turnoutInner(votes, expected, closed, shrunk) {
   return `<div class="turn-top"><span class="turn-num">${votes}${expected ? ` <small>of ${expected}</small>` : ""}</span>
       <span class="turn-lbl">${expected ? "people voted" : (votes == 1 ? "person voted" : "people voted")}</span></div>
     ${expected ? `<div class="turn-bar"><div style="width:${pct}%"></div></div>` : ""}
-    ${closed || !expected ? "" : `<div class="mute">${waiting ? `Waiting on ${waiting} more. Voting closes as soon as everyone has voted.` : "Everyone has voted."}${shrunk ? " ⏱ Most people have voted, so the deadline was shortened." : ""}</div>`}`;
+    ${closed || !expected ? "" : `<div class="mute">${waiting ? `Waiting on ${waiting} more. Voting closes as soon as everyone has voted.` : "Everyone has voted."}${shrunk ? " ⏱ Each vote shortens the clock." : ""}</div>`}`;
 }
 const turnout = (votes, expected, closed, shrunk) => `<div class="turn" id="turn">${turnoutInner(votes, expected, closed, shrunk)}</div>`;
 // Live refresh every 20s while an open poll is on screen: turnout, a shortened deadline, and auto-close.
@@ -319,7 +319,7 @@ function createPage() {
           <div class="hint" id="omHint"></div></div>
         <div class="field"><div class="count"><label class="f" for="evIn">Expected voters</label>
             <div class="stepper"><button type="button" id="evMinus" aria-label="Fewer voters">−</button><input id="evIn" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="7"><button type="button" id="evPlus" aria-label="More voters">+</button></div></div>
-          <div class="hint">How many people should vote. Everyone sees how many have voted (never what they picked). Voting closes as soon as everyone has voted. Once most have (80%), the time left is cut to a quarter.</div></div>
+          <div class="hint">How many people should vote. Everyone sees how many have voted (never what they picked). Every vote shortens the clock, and voting closes as soon as everyone has voted.</div></div>
         <div class="field"><label class="f" for="cc">Voting closes</label><input id="cc" type="datetime-local" required>
           <div class="hint">Your time. Voting stops automatically and results open to everyone. You can close it early.</div></div>
       </div>
@@ -347,8 +347,8 @@ function createPage() {
   const evIn = document.getElementById("evIn"), evStep = d => { evIn.value = Math.min(500, Math.max(1, (parseInt(evIn.value, 10) || 7) + d)); };
   document.getElementById("evMinus").onclick = () => evStep(-1);
   document.getElementById("evPlus").onclick = () => evStep(1);
-  // default: 24 hours from now, in local time
-  const cc = document.getElementById("cc"), pad = n => String(n).padStart(2, "0"), dflt = new Date(Date.now() + 864e5);
+  // default: 8 hours from now, in local time
+  const cc = document.getElementById("cc"), pad = n => String(n).padStart(2, "0"), dflt = new Date(Date.now() + 8 * 36e5);
   cc.value = `${dflt.getFullYear()}-${pad(dflt.getMonth() + 1)}-${pad(dflt.getDate())}T${pad(dflt.getHours())}:${pad(dflt.getMinutes())}`;
   document.getElementById("f").onsubmit = async ev => {
     ev.preventDefault();
