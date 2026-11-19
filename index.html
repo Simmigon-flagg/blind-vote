@@ -253,7 +253,7 @@ function watchPoll(now) {
 }
 const hero = (kicker, title, pills) => `<section class="hero"><div class="kicker">${kicker}</div><h1>${esc(title)}</h1><div class="pills">${pills}</div></section>`;
 function toast(t) { const el = document.getElementById("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 1800); }
-async function copy(text) { try { await navigator.clipboard.writeText(text); toast("Link copied"); } catch (e) { prompt("Copy this link:", text); } }
+async function copy(text) { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch (e) { prompt("Copy this link:", text); } }
 const ICON_SEARCH = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
 const ICON_TRASH = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>`;
 
@@ -280,6 +280,8 @@ const saveMyPoll = p => setMyPolls([p, ...myPolls().filter(x => x.id !== p.id)])
 const forgetPoll = id => setMyPolls(myPolls().filter(x => x.id !== id));
 const adminUrl = (id, key) => `${base}?p=${id}&admin=${encodeURIComponent(key)}`;
 const voteUrl = id => `${base}?p=${id}`;
+// Chat apps can't show a per-poll preview card for a static site, so the copied text carries the question.
+const shareText = (question, url) => `Blind vote: ${question}\n${url}`;
 
 // ---------- routing ----------
 function setTab(tab) {
@@ -377,7 +379,8 @@ function createdPage(id, key, question, closesAt, expected) {
   app.innerHTML = `
     ${hero("Poll created 🎉", question, countdown(closesAt) + closesPill(closesAt) + `<span class="pill">👥 ${expected} expected</span>`)}
     <div class="card"><h2>📣 Share this link with everyone</h2><p class="mute" style="margin:0 0 12px">Everyone uses the same link. One vote per phone.</p>
-      <div class="linkbox"><code>${esc(v)}</code><button class="btn sm" data-c="${esc(v)}">Copy</button></div>
+      <div class="linkbox"><code>${esc(v)}</code><button class="btn sm" data-c="${esc(shareText(question, v))}">Copy</button></div>
+      <p class="mute" style="margin:8px 0 0">Copies the question with the link, so people see it in the chat.</p>
       <div class="row"><a class="btn ghost wide" href="${esc(v)}">🗳 Cast my own vote</a></div></div>
     <div class="card"><h2>🔑 Your admin link</h2><p class="mute" style="margin:0 0 12px">Live results, requests, close early, delete. Keep it private. It's saved in My polls on this device.</p>
       <div class="linkbox"><code>${esc(a)}</code><button class="btn sm ghost" data-c="${esc(a)}">Copy</button></div></div>
@@ -580,7 +583,7 @@ async function resultsPage() {
       ${r.is_admin ? `
         <div id="reqs"></div>
         <div class="card" style="margin-top:16px"><h2>📣 Voting link</h2><p class="mute" style="margin:0 0 12px">Same link for everyone. After voting closes, it shows these results.</p>
-          <div class="linkbox"><code>${esc(voteUrl(poll))}</code><button class="btn sm" data-c="${esc(voteUrl(poll))}">Copy</button></div>
+          <div class="linkbox"><code>${esc(voteUrl(poll))}</code><button class="btn sm" data-c="${esc(shareText(r.question, voteUrl(poll)))}">Copy</button></div>
           <div class="row">${r.closed ? "" : `<span id="closeRow"><button class="btn ghost sm" id="tog">Close voting now</button></span>`}<button class="btn ghost sm" id="ref">↻ Refresh</button></div></div>
         <div class="card"><h2>🚫 Blocked repeat tries · ${r.blocked || 0}</h2>
           <p class="mute" style="margin:0">A phone that already voted opened the link again or tried to vote again. Private tabs and other phones can't be detected.</p></div>
