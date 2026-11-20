@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#5b4dff">
 <title>Blind Vote</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Blind Vote">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -315,6 +321,31 @@ function showHelp() {
   document.getElementById("help").onclick = e => { if (e.target.id === "help") close(); };
 }
 
+// ---------- add to home screen ----------
+// Android/desktop Chrome can install directly. iPhone has no install API, so the button shows the steps instead.
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; });
+const isStandalone = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+const installCard = () => isStandalone() ? "" : `<div class="card" style="margin-top:16px;text-align:center"><h2>📲 Use it like an app</h2>
+  <p class="mute" style="margin:4px 0 12px">Put Blind Vote on your home screen so it's one tap away.</p>
+  <button class="btn ghost wide" id="installBtn" type="button">Add to Home Screen</button></div>`;
+async function addToHome() {
+  if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; return; }
+  const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua), inApp = /FBAN|FBAV|FB_IAB|Messenger|Instagram/.test(ua);
+  const steps = inApp ? [["Tap ⋯ at the top, then Open in browser", "You're inside Facebook's browser, which can't add apps."], ["Then tap Add to Home Screen again", "It will show the next steps there."]]
+    : ios ? [["Tap the Share button", "The square with an arrow pointing up. It's at the bottom in Safari, or in the address bar in Chrome."], ["Tap Add to Home Screen", "Scroll down the list if you don't see it."], ["Tap Add", "Blind Vote now has its own icon on your home screen."]]
+    : [["Open your browser's menu", "Usually ⋮ at the top right."], ["Tap Add to Home Screen or Install app", "Blind Vote now has its own icon."]];
+  document.querySelectorAll(".overlay").forEach(o => o.remove());
+  document.body.insertAdjacentHTML("beforeend", `<div class="overlay" id="help"><div class="sheet"><h2>Add to Home Screen</h2>
+    ${steps.map(([t, d], i) => `<div class="step"><span class="letter">${i + 1}</span><div>${t}<small>${d}</small></div></div>`).join("")}
+    <p class="mute" style="margin:0 0 14px">Heads up: the home screen app keeps its own list. Polls you already made in this browser stay here, so make new polls from the app.</p>
+    <button class="btn wide" id="helpOk" type="button">Got it</button></div></div>`);
+  const close = () => document.getElementById("help").remove();
+  document.getElementById("helpOk").onclick = close;
+  document.getElementById("help").onclick = e => { if (e.target.id === "help") close(); };
+}
+document.addEventListener("click", e => { if (e.target.closest && e.target.closest("#installBtn")) addToHome(); });
+
 // ---------- routing ----------
 function setTab(tab) {
   ["tabs", "dock"].forEach(id => document.getElementById(id).hidden = !tab);
@@ -327,6 +358,7 @@ function route() {
   const tab = location.hash === "#new" || (location.hash !== "#mine" && !myPolls().length) ? "new" : "mine";
   setTab(tab); window.scrollTo(0, 0);
   tab === "new" ? createPage() : myPollsPage();
+  app.insertAdjacentHTML("beforeend", installCard());
 }
 
 // ---------- create ----------
