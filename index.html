@@ -183,6 +183,15 @@
   .turn .mute { margin-top:8px; }
   .stepper input { width:52px; text-align:center; border:0 !important; background:transparent !important; box-shadow:none !important; font-weight:800; padding:0 !important; }
   .danger-zone { border-color:color-mix(in srgb, var(--fail) 30%, var(--line)); }
+  .helpbtn { border:1.5px solid var(--line); background:var(--card); border-radius:999px; padding:7px 13px; font-weight:700; font-size:.82rem; cursor:pointer; margin-left:8px; }
+  .overlay { position:fixed; inset:0; z-index:30; background:rgba(10,8,25,.55); backdrop-filter:blur(3px); display:flex; align-items:flex-end; justify-content:center; padding:16px;
+             padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 16px); }
+  @media (min-width:561px) { .overlay { align-items:center; } }
+  .sheet { background:var(--card); border-radius:24px; padding:24px 22px 20px; width:100%; max-width:440px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+  .sheet h2 { font-size:1.3rem; margin-bottom:14px; }
+  .step { display:flex; gap:12px; align-items:flex-start; margin-bottom:14px; font-weight:600; }
+  .step .letter { width:32px; height:32px; font-size:.95rem; }
+  .step small { display:block; color:var(--mute); font-weight:500; font-size:.86rem; }
   .toast { position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 96px); transform:translate(-50%, 10px); background:var(--ink); color:var(--bg);
            padding:11px 18px; border-radius:14px; font-weight:700; font-size:.88rem; opacity:0; transition:.2s; pointer-events:none; z-index:20; }
   .toast.show { opacity:1; transform:translate(-50%, 0); }
@@ -194,6 +203,7 @@
 <header class="top"><div class="top-in">
   <a class="brand" href="./"><span class="logo">✓</span> Blind Vote</a>
   <nav class="tabs" id="tabs" hidden><a href="#mine" data-tab="mine">My polls</a><a href="#new" data-tab="new">+ New poll</a></nav>
+  <button class="helpbtn" id="helpBtn" type="button">How it works</button>
 </div></header>
 <main id="app"><div class="skeleton"></div></main>
 <nav class="dock" id="dock" hidden><a href="#mine" data-tab="mine"><span>🗂</span>My polls</a><a href="#new" data-tab="new"><span>＋</span>New poll</a></nav>
@@ -282,6 +292,28 @@ const adminUrl = (id, key) => `${base}?p=${id}&admin=${encodeURIComponent(key)}`
 const voteUrl = id => `${base}?p=${id}`;
 // Chat apps can't show a per-poll preview card for a static site, so the copied text carries the question.
 const shareText = (question, url) => `Blind vote: ${question}\n${url}`;
+
+// ---------- how it works (shows once on first visit; the header button brings it back) ----------
+const HELP = {
+  voter: { title: "How to vote", steps: [
+    ["Tap the choice you want", "You'll see the question at the top."],
+    ["Tap Submit vote", "You get one vote per phone. Nobody can see what you picked, not even the person who made the poll."],
+    ["Come back to the same link for results", "They show for everyone when the timer runs out or everyone has voted."]] },
+  creator: { title: "How to make a poll", steps: [
+    ["Tap New poll", "Type your question and the choices. A choice can be a word or a whole sentence."],
+    ["Tap Copy and paste it in your group chat", "Everyone uses the same link, and you vote with it too."],
+    ["Wait for the votes", "Results stay hidden from everyone, including you, until the timer runs out or everyone has voted."]] },
+};
+function showHelp() {
+  const h = HELP[poll && !admin ? "voter" : "creator"];
+  document.querySelectorAll(".overlay").forEach(o => o.remove());
+  document.body.insertAdjacentHTML("beforeend", `<div class="overlay" id="help"><div class="sheet"><h2>${h.title}</h2>
+    ${h.steps.map(([t, d], i) => `<div class="step"><span class="letter">${i + 1}</span><div>${t}<small>${d}</small></div></div>`).join("")}
+    <button class="btn wide" id="helpOk" type="button">Got it</button></div></div>`);
+  const close = () => { document.getElementById("help").remove(); try { localStorage.setItem("bv_help_" + (poll && !admin ? "voter" : "creator"), "1"); } catch (e) {} };
+  document.getElementById("helpOk").onclick = close;
+  document.getElementById("help").onclick = e => { if (e.target.id === "help") close(); };
+}
 
 // ---------- routing ----------
 function setTab(tab) {
@@ -633,6 +665,8 @@ function msg(title, body, icon = "ℹ️") { app.innerHTML = doneCard(icon, titl
 // Start last, so every const above (PAGE, view, …) exists before the first page renders.
 window.addEventListener("hashchange", route);
 route();
+document.getElementById("helpBtn").onclick = showHelp;
+try { if (!localStorage.getItem("bv_help_" + (poll && !admin ? "voter" : "creator"))) showHelp(); } catch (e) {}
 </script>
 </body>
 </html>
