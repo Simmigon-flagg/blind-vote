@@ -346,6 +346,68 @@ async function addToHome() {
 }
 document.addEventListener("click", e => { if (e.target.closest && e.target.closest("#installBtn")) addToHome(); });
 
+// ---------- notifications ----------
+// Web push works in the home screen app on iPhone and in Chrome/Edge/Firefox on Android and computers.
+// It does not work inside Facebook's or Messenger's built-in browser.
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const notifyOn = id => { try { return localStorage.getItem("bv_notify_" + id) === "1"; } catch (e) { return false; } };
+const b64ToBytes = b => Uint8Array.from(atob(b.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+let notifyCount = null; // admin only: how many will be notified (a number, never who)
+function notifyInner() {
+  const n = notifyCount == null ? "" : `<p class="mute" style="margin:10px 0 0">🔔 ${notifyCount} ${notifyCount == 1 ? "person" : "people"} will be notified when this closes.</p>`;
+  return (notifyOn(poll) ? `<div class="notice"><span>🔔</span><div>You'll get a notification here when the results are ready.</div></div>`
+    : `<h2>Want a heads up?</h2><p class="mute" style="margin:0 0 12px">Get a notification on this phone when the results are ready.</p>
+       <button class="btn ghost wide" id="notifyBtn" type="button">🔔 Notify me when results are ready</button>`) + n;
+}
+const notifyCard = () => `<div class="card" id="notifyCard" style="margin-top:16px">${notifyInner()}</div>`;
+async function enableNotify() {
+  if (!pushSupported()) return notifyHelp();
+  const btn = document.getElementById("notifyBtn"); if (btn) btn.disabled = true;
+  try {
+    const perm = await Notification.requestPermission(); // first, while the tap still counts
+    if (perm !== "granted") throw new Error("Notifications are turned off for this app");
+    const reg = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    const key = await rpc("push_public_key");
+    if (!key) throw new Error("Notifications aren't set up yet");
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+    await rpc("subscribe_push", { p_poll: poll, p_sub: sub.toJSON() });
+    try { localStorage.setItem("bv_notify_" + poll, "1"); } catch (e) {}
+    if (notifyCount != null) notifyCount++;
+    document.getElementById("notifyCard").innerHTML = notifyInner(); toast("Notifications on");
+  } catch (e) { toast(e.message || "Couldn't turn on notifications"); if (btn) btn.disabled = false; }
+}
+// This browser can't do notifications (iPhone Safari/Chrome tab, or Facebook's browser): explain the home screen route.
+function notifyHelp() {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent), link = voteUrl(poll) + (admin ? "&admin=" + encodeURIComponent(admin) : "");
+  const steps = ios ? [["Add Blind Vote to your Home Screen", "Tap Share, then Add to Home Screen. Inside Facebook or Messenger, tap ⋯ and Open in browser first."],
+                       ["Copy this poll's link", "Use the button below."],
+                       ["Open Blind Vote from your Home Screen", "Paste the link under Open a poll link, then tap Notify me there."]]
+                    : [["Open this poll in Chrome, Edge or Firefox", "This browser can't show notifications."], ["Tap Notify me again", "It will ask for permission once."]];
+  document.querySelectorAll(".overlay").forEach(o => o.remove());
+  document.body.insertAdjacentHTML("beforeend", `<div class="overlay" id="help"><div class="sheet"><h2>Notifications need the app</h2>
+    ${steps.map(([t, d], i) => `<div class="step"><span class="letter">${i + 1}</span><div>${t}<small>${d}</small></div></div>`).join("")}
+    <div class="row" style="margin-top:0"><button class="btn ghost wide" id="helpCopy" type="button">Copy this poll's link</button><button class="btn wide" id="helpOk" type="button">Got it</button></div></div></div>`);
+  const close = () => document.getElementById("help").remove();
+  document.getElementById("helpCopy").onclick = () => copy(link);
+  document.getElementById("helpOk").onclick = close;
+  document.getElementById("help").onclick = e => { if (e.target.id === "help") close(); };
+}
+document.addEventListener("click", e => { if (e.target.closest && e.target.closest("#notifyBtn")) enableNotify(); });
+
+// Open a poll from a pasted link (for the home screen app, where chat links don't open).
+const openLinkCard = () => `<div class="card" style="margin-top:16px"><h2>Open a poll link</h2>
+  <p class="mute" style="margin:4px 0 12px">Got a link in a chat? Paste it here to vote or see the results.</p>
+  <form id="openForm" class="choice-in" style="margin:0"><input id="openIn" placeholder="Paste the poll link" autocomplete="off" autocapitalize="off" required><button class="btn sm">Open</button></form>
+  <div class="err" id="openErr"></div></div>`;
+document.addEventListener("submit", e => {
+  if (e.target.id !== "openForm") return;
+  e.preventDefault();
+  const v = document.getElementById("openIn").value, id = (v.match(/[?&]p=([0-9a-f]{8}-[0-9a-f-]{27})/i) || [])[1], key = (v.match(/[?&]admin=([\w-]+)/) || [])[1];
+  if (!id) { document.getElementById("openErr").textContent = "That doesn't look like a Blind Vote link."; return; }
+  location.href = base + "?p=" + id + (key ? "&admin=" + key : "");
+});
+
 // ---------- routing ----------
 function setTab(tab) {
   ["tabs", "dock"].forEach(id => document.getElementById(id).hidden = !tab);
@@ -358,7 +420,7 @@ function route() {
   const tab = location.hash === "#new" || (location.hash !== "#mine" && !myPolls().length) ? "new" : "mine";
   setTab(tab); window.scrollTo(0, 0);
   tab === "new" ? createPage() : myPollsPage();
-  app.insertAdjacentHTML("beforeend", installCard());
+  app.insertAdjacentHTML("beforeend", openLinkCard() + installCard());
 }
 
 // ---------- create ----------
@@ -571,12 +633,13 @@ async function openVotePage() {
   try {
     const dev = deviceId();
     const p = await rpc("get_poll_open", { p_poll: poll, p_device: dev });
+    notifyCount = null;
     if (p.closed) return resultsPage();
     const pills = (p.closes_at ? countdown(p.closes_at, true) + closesPill(p.closes_at) : "") + `<span class="pill">🔒 Anonymous</span>`;
     const head = (votes = p.votes) => hero("Blind vote", p.question, pills) + turnout(votes, p.expected, false, p.shrunk);
     if (p.voted) {
       app.innerHTML = head() +
-        doneCard("🙌", "You already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results appear here when voting closes.", true);
+        doneCard("🙌", "You already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results appear here when voting closes.", true) + notifyCard();
       watchPoll(); return;
     }
     const req = p.my_request;
@@ -589,6 +652,7 @@ async function openVotePage() {
         <h2>Don't see your choice?</h2><p class="mute" style="margin:0 0 12px">Ask the poll owner to add it. You can vote once it's approved.</p>
         <form id="rf" class="choice-in" style="margin:0"><input id="rt" maxlength="200" placeholder="Suggest an option" required><button class="btn sm">Send</button></form>
         <div class="err" id="re"></div>`}</div>` : ""}
+      ${notifyCard()}
       <p class="mute" style="text-align:center;margin-top:14px">Your vote isn't linked to you. One vote per phone.</p>`;
     watchPoll();
     const wi = document.getElementById("wi");
@@ -610,8 +674,8 @@ async function openVotePage() {
       try {
         const res = await rpc("cast_vote_open", { p_poll: poll, p_device: dev, p_choice: writeIn ? -1 : +picked, p_write_in: writeIn });
         window.scrollTo(0, 0);
-        if (res && res.ok === false) { app.innerHTML = head() + doneCard("🙌", "You already voted", res.message + ". The poll owner can see a repeat try was blocked.", true); watchPoll(true); return; }
-        app.innerHTML = head(p.votes + 1) + doneCard("✅", "Vote recorded", "Thanks! Your vote is anonymous. Results appear here when voting closes.");
+        if (res && res.ok === false) { app.innerHTML = head() + doneCard("🙌", "You already voted", res.message + ". The poll owner can see a repeat try was blocked.", true) + notifyCard(); watchPoll(true); return; }
+        app.innerHTML = head(p.votes + 1) + doneCard("✅", "Vote recorded", "Thanks! Your vote is anonymous. Results appear here when voting closes.") + notifyCard();
         watchPoll(true); // refresh now: this vote may have shortened the deadline or closed the poll
       }
       catch (e) { document.getElementById("e").textContent = e.message; btn.disabled = false; }
@@ -629,6 +693,7 @@ function requestStatus(r) {
 async function resultsPage() {
   try {
     const r = await rpc("get_results", { p_poll: poll, p_admin: admin });
+    notifyCount = r.is_admin && !r.closed ? r.notify_count : null;
     const counts = r.counts || [], sum = counts.reduce((a, b) => a + b, 0), top = Math.max(0, ...counts);
     const v = verdict({ ...r, gone: false });
     const expected = r.expected || r.total || null;
@@ -645,7 +710,7 @@ async function resultsPage() {
         return `<div class="res${win ? " win" : ""}"><div class="fill" style="width:${pct}%"></div><span class="letter">${win ? "🏆" : L(i)}</span>
           <span>${esc(o)}</span><span class="pct">${pct}% <span class="n">· ${counts[i]}</span></span></div>`; }).join("")}</div>
       ${r.is_admin ? `
-        <div id="reqs"></div>
+        <div id="reqs"></div>${r.closed ? "" : notifyCard()}
         <div class="card" style="margin-top:16px"><h2>📣 Voting link</h2><p class="mute" style="margin:0 0 12px">Same link for everyone. After voting closes, it shows these results.</p>
           <div class="linkbox"><code>${esc(voteUrl(poll))}</code><button class="btn sm" data-c="${esc(shareText(r.question, voteUrl(poll)))}">Copy</button></div>
           <div class="row">${r.closed ? "" : `<span id="closeRow"><button class="btn ghost sm" id="tog">Close voting now</button></span>`}<button class="btn ghost sm" id="ref">↻ Refresh</button></div></div>

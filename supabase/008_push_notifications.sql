@@ -1,0 +1,7 @@
+-- Applied to the live project as migrations "progressive_deadline_shrink" and "push_notifications".
+-- Progressive shrink: polls.original_closes_at; each vote caps time left at window x (voters left / expected), min 15 minutes.
+-- Push: push_subs (poll_id, endpoint, p256dh, auth), push_keys (VAPID pair, made by the edge function on first run),
+--   polls.notified_at, subscribe_push(poll, sub), push_public_key(), and service-role-only
+--   push_keys_get / push_keys_set / take_closed_notifications / drop_push_sub.
+-- pg_cron job "blind-vote-notify" pings functions/notify-closed each minute when a closed poll is waiting.
+-- get_results returns notify_count to the admin.
