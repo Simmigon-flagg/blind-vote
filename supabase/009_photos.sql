@@ -1,0 +1,5 @@
+-- Applied to the live project as migrations "poll_images" (first draft) and "poll_photos_multiple".
+-- polls.images jsonb = {"q": [dataUrl, ...], "o": [[dataUrl, ...], ...]}; up to 4 photos on the question and on each choice.
+-- set_poll_photos(poll, admin, images): validates every photo (data:image/jpeg|png|webp, size caps); locked once anyone votes.
+-- get_poll_open / get_results return "images".
+-- Unused leftovers from the first draft, safe to drop: polls.question_image, polls.option_images, set_poll_images().

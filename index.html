@@ -112,6 +112,26 @@
   .opt:has(input:checked) .letter { background:var(--acc); color:#fff; }
   .opt .check { margin-left:auto; width:22px; height:22px; border-radius:50%; border:2px solid var(--line); flex-shrink:0; }
   .opt:has(input:checked) .check { border:7px solid var(--acc); }
+  .imgbtn { flex-shrink:0; width:48px; height:48px; border-radius:12px; border:1.5px dashed var(--line); display:grid; place-items:center; cursor:pointer; font-size:1.15rem; }
+  .thumbs { display:flex; gap:10px; flex-wrap:wrap; margin:2px 0 12px 40px; }
+  #qPrev .thumbs { margin:12px 0 0; }
+  .th { position:relative; }
+  .th img { width:64px; height:64px; object-fit:cover; border-radius:12px; display:block; cursor:zoom-in; }
+  .th button { position:absolute; top:-7px; right:-7px; width:24px; height:24px; border-radius:50%; border:2px solid var(--card); background:var(--fail); color:#fff; font-size:.7rem; font-weight:800; cursor:pointer; padding:0; }
+  .opt.has-img, .res.has-img { flex-direction:column; align-items:stretch; }
+  .orow { display:flex; align-items:center; gap:12px; }
+  .gal { display:grid; gap:6px; }
+  .gal.n2 { grid-template-columns:1fr 1fr; }
+  .gal img { width:100%; border-radius:12px; background:var(--soft); display:block; cursor:zoom-in; }
+  .gal.n1 img { max-height:260px; object-fit:contain; }
+  .gal.n2 img { aspect-ratio:1; object-fit:cover; }
+  .qgal { margin:-4px 0 14px; }
+  .zoom { position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.93); display:grid; place-items:center; }
+  .zoom img { max-width:100vw; max-height:100vh; max-height:100dvh; object-fit:contain; }
+  .zoom button { position:absolute; border:0; background:rgba(255,255,255,.18); color:#fff; width:44px; height:44px; border-radius:50%; font-size:1.3rem; cursor:pointer; padding:0; }
+  .zoom .zx { top:calc(env(safe-area-inset-top, 0px) + 12px); right:12px; }
+  .zoom .zp { left:10px; top:calc(50% - 22px); } .zoom .zn { right:10px; top:calc(50% - 22px); }
+  .zoom .zc { position:absolute; bottom:calc(env(safe-area-inset-bottom, 0px) + 18px); color:#fff; font-weight:700; font-size:.9rem; }
   .opt #wi { flex:1; min-width:0; padding:8px 10px; border-radius:10px; font-weight:500; }
 
   /* results: the bar fills behind the option */
@@ -270,6 +290,51 @@ function watchPoll(now) {
 const hero = (kicker, title, pills) => `<section class="hero"><div class="kicker">${kicker}</div><h1>${esc(title)}</h1><div class="pills">${pills}</div></section>`;
 function toast(t) { const el = document.getElementById("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 1800); }
 async function copy(text) { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch (e) { prompt("Copy this link:", text); } }
+// Photos are resized in the browser (longest side 1280px, JPEG) before upload: sharp in full view, still quick to load.
+async function shrinkImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("This browser can't read that photo. Try a JPG or PNG.")); i.src = url; });
+    let side = 1280, q = 0.78, out = "";
+    for (let n = 0; n < 5; n++) {
+      const k = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      out = c.toDataURL("image/jpeg", q);
+      if (out.length <= 330000) return out;
+      side *= 0.75; q -= 0.08;
+    }
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
+// Photos: poll.images = { q: [url…], o: [[url…], …] }. A choice with photos stacks them above its row.
+const gallery = list => !list || !list.length ? "" : `<div class="gal n${Math.min(list.length, 2)}">${list.map((src, j) => `<img src="${esc(src)}" alt="" data-zoom="${j}">`).join("")}</div>`;
+const optPhotos = (images, i) => images && images.o && images.o[i] && images.o[i].length ? images.o[i] : null;
+const anyPhotos = images => !!images && (((images.q || []).length > 0) || (images.o || []).some(a => a && a.length));
+const qgal = images => (images && images.q && images.q.length ? `<div class="qgal">${gallery(images.q)}</div>` : "") +
+  (anyPhotos(images) ? `<p class="mute" style="text-align:center;margin:-4px 0 12px">Tap a photo to see it full size.</p>` : "");
+const resRow = (images, i, cls, inner, pct) => { const ph = optPhotos(images, i);
+  return `<div class="res${cls}${ph ? " has-img" : ""}">${pct == null ? "" : `<div class="fill" style="width:${pct}%"></div>`}${gallery(ph)}${ph ? '<span class="orow">' : ""}${inner}${ph ? "</span>" : ""}</div>`; };
+// Full-size viewer: tap any photo. ‹ › move between photos in the same group; tap anywhere else to close.
+function openZoom(list, i) {
+  document.querySelectorAll(".zoom").forEach(z => z.remove());
+  document.body.insertAdjacentHTML("beforeend", `<div class="zoom"><img alt=""><button class="zx" type="button" aria-label="Close">✕</button>${list.length > 1
+    ? `<button class="zp" type="button" aria-label="Previous photo">‹</button><button class="zn" type="button" aria-label="Next photo">›</button><span class="zc"></span>` : ""}</div>`);
+  const z = document.querySelector(".zoom");
+  const show = () => { z.querySelector("img").src = list[i]; const c = z.querySelector(".zc"); if (c) c.textContent = `${i + 1} of ${list.length}`; };
+  z.onclick = e => {
+    if (e.target.classList.contains("zp")) i = (i - 1 + list.length) % list.length;
+    else if (e.target.classList.contains("zn")) i = (i + 1) % list.length;
+    else return z.remove();
+    show();
+  };
+  show();
+}
+document.addEventListener("click", e => {
+  const el = e.target.closest && e.target.closest("[data-zoom]"); if (!el) return;
+  e.preventDefault(); // inside a choice card: open the photo, don't pick the choice
+  openZoom([...el.closest(".gal, .thumbs").querySelectorAll("img")].map(x => x.src), +el.dataset.zoom);
+});
 const ICON_SEARCH = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
 const ICON_TRASH = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>`;
 
@@ -429,12 +494,13 @@ function createPage() {
     <h1>New poll</h1><p class="sub">One link for everyone · one vote per phone · votes are anonymous.</p>
     <form id="f">
       <div class="card">
-        <div class="field"><label class="f" for="qq">Question</label><input id="qq" maxlength="500" placeholder="What should we decide?" required></div>
+        <div class="field"><label class="f" for="qq">Question</label><input id="qq" maxlength="500" placeholder="What should we decide?" required>
+          <div class="row" style="margin-top:10px"><label class="btn ghost sm">📷 Add photos<input type="file" accept="image/*" multiple id="qImgIn" hidden></label></div><div id="qPrev"></div></div>
         <div class="field">
           <div class="count"><label class="f">Choices</label>
             <div class="stepper"><button type="button" id="minus" aria-label="Fewer choices">−</button><b id="num">2</b><button type="button" id="plus" aria-label="More choices">+</button></div></div>
           <div id="choices"></div>
-          <div class="hint">Each choice can be a word, a name, or a whole sentence.</div>
+          <div class="hint">Each choice can be a word, a name, or a whole sentence. Tap 📷 to add photos (up to 4 each).</div>
         </div>
       </div>
       <div class="card">
@@ -460,18 +526,35 @@ function createPage() {
   // Choice boxes: pick how many, then type each one. Typed text is kept when the count changes.
   const box = document.getElementById("choices"), MIN = 2, MAX = 20;
   // Start empty: placeholders show a choice can be a word OR a full sentence, not just Yes/No.
-  const EXAMPLES = ["e.g. Yes", "e.g. Meet Saturday at the park"];
-  let vals = ["", ""];
+  const EXAMPLES = ["e.g. Yes", "e.g. Saturday at the park"];
+  let vals = ["", ""], imgs = [[], []], qImgs = []; // imgs[i] = photos for choice i
+  const MAXP = 4;
+  const pickImages = async (input, list, redraw) => {
+    for (const f of [...(input.files || [])]) {
+      if (list.length >= MAXP) { toast(`Up to ${MAXP} photos each`); break; }
+      try { list.push(await shrinkImage(f)); } catch (e) { toast(e.message || "Couldn't read that photo"); }
+    }
+    input.value = ""; redraw();
+  };
+  const thumbs = (list, key) => !list.length ? "" : `<div class="thumbs">${list.map((src, j) => `<span class="th"><img src="${src}" alt="" data-zoom="${j}"><button type="button" data-rm="${key}:${j}" aria-label="Delete photo">✕</button></span>`).join("")}</div>`;
   const drawChoices = () => {
-    box.innerHTML = vals.map((v, i) => `<div class="choice-in"><span class="letter">${L(i)}</span><input class="choice" data-i="${i}" maxlength="200" placeholder="${esc(EXAMPLES[i] || "Type a word or a short sentence")}" value="${esc(v)}" required></div>`).join("");
+    box.innerHTML = vals.map((v, i) => `<div class="choice-in"><span class="letter">${L(i)}</span><input class="choice" data-i="${i}" maxlength="200" placeholder="${esc(EXAMPLES[i] || "Type a word or a short sentence")}" value="${esc(v)}" required>
+      <label class="imgbtn" title="Add photos to this choice">📷<input type="file" accept="image/*" multiple data-img="${i}" hidden></label></div>${thumbs(imgs[i], i)}`).join("");
     document.getElementById("num").textContent = vals.length;
     document.getElementById("minus").disabled = vals.length <= MIN;
     document.getElementById("plus").disabled = vals.length >= MAX;
     box.querySelectorAll(".choice").forEach(el => el.oninput = () => { vals[+el.dataset.i] = el.value; });
+    box.querySelectorAll("[data-img]").forEach(el => el.onchange = () => pickImages(el, imgs[+el.dataset.img], drawChoices));
+    box.querySelectorAll("[data-rm]").forEach(el => el.onclick = () => { const [i, j] = el.dataset.rm.split(":"); imgs[+i].splice(+j, 1); drawChoices(); });
   };
-  document.getElementById("minus").onclick = () => { if (vals.length > MIN) { vals.pop(); drawChoices(); } };
-  document.getElementById("plus").onclick = () => { if (vals.length < MAX) { vals.push(""); drawChoices(); box.querySelector(".choice-in:last-child input").focus(); } };
+  document.getElementById("minus").onclick = () => { if (vals.length > MIN) { vals.pop(); imgs.pop(); drawChoices(); } };
+  document.getElementById("plus").onclick = () => { if (vals.length < MAX) { vals.push(""); imgs.push([]); drawChoices(); [...box.querySelectorAll(".choice")].pop().focus(); } };
   drawChoices();
+  const drawQ = () => {
+    const prev = document.getElementById("qPrev"); prev.innerHTML = thumbs(qImgs, "q");
+    prev.querySelectorAll("[data-rm]").forEach(el => el.onclick = () => { qImgs.splice(+el.dataset.rm.split(":")[1], 1); drawQ(); });
+  };
+  document.getElementById("qImgIn").onchange = e => pickImages(e.target, qImgs, drawQ);
   const evIn = document.getElementById("evIn"), evStep = d => { evIn.value = Math.min(500, Math.max(1, (parseInt(evIn.value, 10) || 7) + d)); };
   document.getElementById("evMinus").onclick = () => evStep(-1);
   document.getElementById("evPlus").onclick = () => evStep(1);
@@ -494,6 +577,10 @@ function createPage() {
     try {
       const r = await rpc("create_poll_open", { p_question: question, p_options: options, p_closes_at: closesAt.toISOString(), p_option_mode: mode, p_expected: expected });
       saveMyPoll({ id: r.poll_id, admin: r.admin_key, question, closes_at: closesAt.toISOString(), created_at: new Date().toISOString() });
+      if (qImgs.length || imgs.some(a => a.length)) {
+        try { await rpc("set_poll_photos", { p_poll: r.poll_id, p_admin: r.admin_key, p_images: { q: qImgs, o: imgs } }); }
+        catch (e) { toast("Poll created, but the photos didn't save: " + e.message); }
+      }
       createdPage(r.poll_id, r.admin_key, question, closesAt.toISOString(), expected);
     } catch (e) { fail(e.message); }
   };
@@ -605,8 +692,8 @@ function askDelete(item, id) {
 }
 
 // ---------- voting ----------
-const optCards = (options, extra = "") => `<div class="opts">${options.map((o, i) => `
-  <label class="opt"><input type="radio" name="c" value="${i}" required><span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="check"></span></label>`).join("")}${extra}</div>`;
+const optCards = (options, extra = "", images = null) => `<div class="opts">${options.map((o, i) => `
+  <label class="opt${optPhotos(images, i) ? " has-img" : ""}">${gallery(optPhotos(images, i))}${optPhotos(images, i) ? '<span class="orow">' : ""}<input type="radio" name="c" value="${i}" required><span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="check"></span>${optPhotos(images, i) ? "</span>" : ""}</label>`).join("")}${extra}</div>`;
 function doneCard(icon, title, body, warn) {
   return `<div class="card done${warn ? " warn" : ""}"><div class="big">${icon}</div><h2>${esc(title)}</h2><p class="mute">${esc(body)}</p></div>`;
 }
@@ -636,7 +723,7 @@ async function openVotePage() {
     notifyCount = null;
     if (p.closed) return resultsPage();
     const pills = (p.closes_at ? countdown(p.closes_at, true) + closesPill(p.closes_at) : "") + `<span class="pill">🔒 Anonymous</span>`;
-    const head = (votes = p.votes) => hero("Blind vote", p.question, pills) + turnout(votes, p.expected, false, p.shrunk);
+    const head = (votes = p.votes) => hero("Blind vote", p.question, pills) + qgal(p.images) + turnout(votes, p.expected, false, p.shrunk);
     if (p.voted) {
       app.innerHTML = head() +
         doneCard("🙌", "You already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results appear here when voting closes.", true) + notifyCard();
@@ -645,7 +732,7 @@ async function openVotePage() {
     const req = p.my_request;
     app.innerHTML = `${head()}
       <form id="f">
-        ${optCards(p.options, p.option_mode === "auto" ? `<label class="opt"><input type="radio" name="c" value="other" required><span class="letter">+</span>Other <input id="wi" maxlength="200" placeholder="type your own"><span class="check"></span></label>` : "")}
+        ${optCards(p.options, p.option_mode === "auto" ? `<label class="opt"><input type="radio" name="c" value="other" required><span class="letter">+</span>Other <input id="wi" maxlength="200" placeholder="type your own"><span class="check"></span></label>` : "", p.images)}
         <div class="row"><button class="btn wide">Submit vote</button></div><div class="err" id="e"></div>
       </form>
       ${p.option_mode === "approve" ? `<div class="card" style="margin-top:16px" id="reqCard">${req ? requestStatus(req) : `
@@ -701,14 +788,14 @@ async function resultsPage() {
     app.innerHTML = `
       ${r.is_admin ? `<a class="back" href="./#mine">← My polls</a>` : ""}
       ${hero(r.closed ? "Final results" : "Your poll · voting open", r.question, pills)}
-      ${turnout(r.voted, expected, r.closed, r.shrunk)}
+      ${qgal(r.images)}${turnout(r.voted, expected, r.closed, r.shrunk)}
       ${r.closed ? `<div style="margin:-4px 0 12px"><span class="bub ${v.k}" style="max-width:none">${esc(v.t)}</span></div>` : ""}
       ${r.closed ? "" : `<div class="notice" style="margin-bottom:12px"><span>🙈</span><div>Results are hidden from everyone, including you, until voting closes.
         <div class="mute" style="font-weight:500">You can see how many people voted, but not what they picked.</div></div></div>`}
-      <div class="opts">${r.closed ? "" : r.options.map((o, i) => `<div class="res"><span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="pct n">hidden</span></div>`).join("")}${!r.closed ? "" : r.options.map((o, i) => {
+      <div class="opts">${r.closed ? "" : r.options.map((o, i) => resRow(r.images, i, "", `<span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="pct n">hidden</span>`)).join("")}${!r.closed ? "" : r.options.map((o, i) => {
         const pct = sum ? Math.round(counts[i] / sum * 100) : 0, win = top > 0 && counts[i] === top;
-        return `<div class="res${win ? " win" : ""}"><div class="fill" style="width:${pct}%"></div><span class="letter">${win ? "🏆" : L(i)}</span>
-          <span>${esc(o)}</span><span class="pct">${pct}% <span class="n">· ${counts[i]}</span></span></div>`; }).join("")}</div>
+        return resRow(r.images, i, win ? " win" : "", `<span class="letter">${win ? "🏆" : L(i)}</span>
+          <span>${esc(o)}</span><span class="pct">${pct}% <span class="n">· ${counts[i]}</span></span>`, pct); }).join("")}</div>
       ${r.is_admin ? `
         <div id="reqs"></div>${r.closed ? "" : notifyCard()}
         <div class="card" style="margin-top:16px"><h2>📣 Voting link</h2><p class="mute" style="margin:0 0 12px">Same link for everyone. After voting closes, it shows these results.</p>
