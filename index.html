@@ -72,7 +72,7 @@
   /* ---------- forms ---------- */
   label.f { display:block; font-weight:700; margin:0 0 8px; font-size:.86rem; }
   .field { margin-bottom:18px; } .field:last-child { margin-bottom:0; }
-  input[type=text], input:not([type]), input[type=search], input[type=datetime-local], textarea {
+  input[type=text], input[type=url], input:not([type]), input[type=search], input[type=datetime-local], textarea {
     width:100%; padding:13px 14px; border:1.5px solid var(--line); border-radius:14px; background:var(--card); }
   input:focus, textarea:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 4px var(--acc-soft); }
   .hint { color:var(--mute); font-size:.8rem; margin-top:7px; }
@@ -113,7 +113,10 @@
   .opt .check { margin-left:auto; width:22px; height:22px; border-radius:50%; border:2px solid var(--line); flex-shrink:0; }
   .opt:has(input:checked) .check { border:7px solid var(--acc); }
   .imgbtn { flex-shrink:0; width:48px; height:48px; border-radius:12px; border:1.5px dashed var(--line); display:grid; place-items:center; cursor:pointer; font-size:1.15rem; }
-  .addph { display:inline-flex; align-items:center; gap:6px; margin:0 0 14px 40px; padding:6px 12px; border:1.5px dashed var(--line); border-radius:10px; font-size:.8rem; font-weight:700; color:var(--mute); cursor:pointer; }
+  .adds { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px 40px; }
+  .addph { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border:1.5px dashed var(--line); border-radius:10px; background:transparent; font-size:.8rem; font-weight:700; color:var(--mute); cursor:pointer; }
+  .lin { display:block; margin:-6px 0 14px 40px; width:calc(100% - 40px) !important; font-size:.9rem; }
+  .lk { display:inline-flex; align-items:center; gap:6px; align-self:flex-start; max-width:100%; padding:6px 12px; border-radius:999px; background:var(--acc-soft); color:var(--acc); font-weight:700; font-size:.82rem; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .gi { position:relative; display:block; }
   .gz { display:grid; place-items:center; position:absolute; right:8px; bottom:8px; width:38px; height:38px; border-radius:11px; border:0; background:rgba(0,0,0,.6); color:#fff; font-size:1.1rem; cursor:pointer; padding:0; }
   .thumbs { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 10px 40px; }
@@ -319,8 +322,35 @@ const optPhotos = (images, i) => images && images.o && images.o[i] && images.o[i
 const anyPhotos = images => !!images && (((images.q || []).length > 0) || (images.o || []).some(a => a && a.length));
 const qgal = images => (images && images.q && images.q.length ? `<div class="qgal">${gallery(images.q)}</div>` : "") +
   (images && images.q && images.q.length ? `<p class="mute" style="text-align:center;margin:-4px 0 12px">Tap the photo to see it full size.</p>` : "");
-const resRow = (images, i, cls, inner, pct) => { const ph = optPhotos(images, i);
-  return `<div class="res${cls}${ph ? " has-img" : ""}">${pct == null ? "" : `<div class="fill" style="width:${pct}%"></div>`}${gallery(ph)}${ph ? '<span class="orow">' : ""}${inner}${ph ? "</span>" : ""}</div>`; };
+// Links: https only, a real domain name (no IP addresses, no user@host tricks). The database enforces the same rules.
+function safeUrl(u) {
+  try {
+    const x = new URL(String(u).trim());
+    return x.protocol === "https:" && !x.username && !x.password && /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(x.hostname) && x.href.length <= 500 ? x : null;
+  } catch (e) { return null; }
+}
+// What people type -> a full address: "example.com/page" and "http://…" both become https://…
+const fixUrl = v => { v = String(v || "").trim(); if (!v) return ""; if (/^http:\/\//i.test(v)) return "https://" + v.slice(7); return /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : "https://" + v; };
+const optLink = (links, i) => links && links.o && links.o[i] && safeUrl(links.o[i]) ? links.o[i] : null;
+// Shows the site name, never a hidden address. Tapping asks before leaving the app (see the click handler below).
+const linkChip = url => { const x = url && safeUrl(url); return x ? `<span role="button" tabindex="0" class="lk" data-link="${esc(x.href)}">🔗 ${esc(x.hostname.replace(/^www\./, ""))}</span>` : ""; };
+const qlink = links => links && links.q && safeUrl(links.q) ? `<div style="text-align:center;margin:-2px 0 14px">${linkChip(links.q)}</div>` : "";
+document.addEventListener("click", e => {
+  const el = e.target.closest && e.target.closest("[data-link]"); if (!el) return;
+  e.preventDefault(); // inside a choice card: don't pick the choice
+  const x = safeUrl(el.dataset.link); if (!x) return;
+  document.querySelectorAll(".overlay").forEach(o => o.remove());
+  document.body.insertAdjacentHTML("beforeend", `<div class="overlay" id="help"><div class="sheet"><h2>Open this link?</h2>
+    <p class="mute" style="margin:0 0 10px">You're leaving Blind Vote to go to <b style="color:var(--ink)">${esc(x.hostname)}</b>. Only open links from people you trust.</p>
+    <div class="linkbox" style="padding:10px 14px"><code style="white-space:normal;overflow-wrap:anywhere">${esc(x.href)}</code></div>
+    <div class="row"><a class="btn wide" id="linkGo" href="${esc(x.href)}" target="_blank" rel="noopener noreferrer nofollow">Open link</a><button class="btn ghost wide" id="helpOk" type="button">Cancel</button></div></div></div>`);
+  const close = () => { const h = document.getElementById("help"); if (h) h.remove(); };
+  document.getElementById("helpOk").onclick = close;
+  document.getElementById("linkGo").onclick = () => setTimeout(close, 50);
+  document.getElementById("help").onclick = ev => { if (ev.target.id === "help") close(); };
+});
+const resRow = (images, i, cls, inner, pct, links) => { const ph = optPhotos(images, i), lk = optLink(links, i), stack = ph || lk;
+  return `<div class="res${cls}${stack ? " has-img" : ""}">${pct == null ? "" : `<div class="fill" style="width:${pct}%"></div>`}${gallery(ph)}${stack ? '<span class="orow">' : ""}${inner}${stack ? "</span>" : ""}${linkChip(lk)}</div>`; };
 // Full-size viewer: tap any photo. ‹ › move between photos in the same group; tap anywhere else to close.
 function openZoom(list, i) {
   document.querySelectorAll(".zoom").forEach(z => z.remove());
@@ -501,12 +531,13 @@ function createPage() {
     <form id="f">
       <div class="card">
         <div class="field"><label class="f" for="qq">Question</label><input id="qq" maxlength="500" placeholder="What should we decide?" required>
-          <div class="row" style="margin-top:10px"><label class="btn ghost sm">📷 Add photos to the question<input type="file" accept="image/*" multiple id="qImgIn" hidden></label></div><div id="qPrev"></div></div>
+          <div class="row" style="margin-top:10px"><label class="btn ghost sm">📷 Add photos to the question<input type="file" accept="image/*" multiple id="qImgIn" hidden></label><button type="button" class="btn ghost sm" id="qLinkBtn">🔗 Add a link</button></div><div id="qPrev"></div>
+          <input id="qLinkIn" type="url" inputmode="url" autocapitalize="off" autocomplete="off" maxlength="500" placeholder="https://… link for the question" style="margin-top:10px" hidden></div>
         <div class="field">
           <div class="count"><label class="f">Choices</label>
             <div class="stepper"><button type="button" id="minus" aria-label="Fewer choices">−</button><b id="num">2</b><button type="button" id="plus" aria-label="More choices">+</button></div></div>
           <div id="choices"></div>
-          <div class="hint">Each choice can be a word, a name, or a whole sentence. Up to 4 photos per choice.</div>
+          <div class="hint">Each choice can be a word, a name, or a whole sentence. Up to 4 photos and one link per choice.</div>
         </div>
       </div>
       <div class="card">
@@ -534,6 +565,7 @@ function createPage() {
   // Start empty: placeholders show a choice can be a word OR a full sentence, not just Yes/No.
   const EXAMPLES = ["e.g. Yes", "e.g. Saturday at the park"];
   let vals = ["", ""], imgs = [[], []], qImgs = []; // imgs[i] = photos for choice i
+  let links = ["", ""], lOpen = [false, false];        // links[i] = optional link for choice i
   const MAXP = 4;
   const pickImages = async (input, list, redraw) => {
     for (const f of [...(input.files || [])]) {
@@ -544,22 +576,27 @@ function createPage() {
   };
   const thumbs = (list, key) => !list.length ? "" : `<div class="thumbs">${list.map((src, j) => `<span class="th"><img src="${src}" alt="" data-zoom="${j}"><button type="button" data-rm="${key}:${j}" aria-label="Delete photo">✕</button></span>`).join("")}</div>`;
   const drawChoices = () => {
-    box.innerHTML = vals.map((v, i) => `<div class="choice-in"><span class="letter">${L(i)}</span><input class="choice" data-i="${i}" maxlength="200" placeholder="${esc(EXAMPLES[i] || "Type a word or a short sentence")}" value="${esc(v)}" required></div>${thumbs(imgs[i], i)}${imgs[i].length >= MAXP ? `<div style="height:8px"></div>` : `<label class="addph">📷 ${imgs[i].length ? "Add more photos" : "Add photos"} for choice ${L(i)}<input type="file" accept="image/*" multiple data-img="${i}" hidden></label>`}`).join("");
+    box.innerHTML = vals.map((v, i) => `<div class="choice-in"><span class="letter">${L(i)}</span><input class="choice" data-i="${i}" maxlength="200" placeholder="${esc(EXAMPLES[i] || "Type a word or a short sentence")}" value="${esc(v)}" required></div>${thumbs(imgs[i], i)}<div class="adds">${imgs[i].length >= MAXP ? "" : `<label class="addph">📷 ${imgs[i].length ? "More photos" : "Add photos"}<input type="file" accept="image/*" multiple data-img="${i}" hidden></label>`}${lOpen[i] || links[i] ? "" : `<button type="button" class="addph" data-lo="${i}">🔗 Add a link</button>`}</div>${lOpen[i] || links[i]
+        ? `<input class="lin" data-l="${i}" type="url" inputmode="url" autocapitalize="off" autocomplete="off" maxlength="500" placeholder="https://… link for choice ${L(i)}" value="${esc(links[i])}">` : ""}`).join("");
     document.getElementById("num").textContent = vals.length;
     document.getElementById("minus").disabled = vals.length <= MIN;
     document.getElementById("plus").disabled = vals.length >= MAX;
     box.querySelectorAll(".choice").forEach(el => el.oninput = () => { vals[+el.dataset.i] = el.value; });
+    box.querySelectorAll("[data-lo]").forEach(el => el.onclick = () => { lOpen[+el.dataset.lo] = true; drawChoices(); box.querySelector(`[data-l="${el.dataset.lo}"]`).focus(); });
+    box.querySelectorAll("[data-l]").forEach(el => el.oninput = () => { links[+el.dataset.l] = el.value; });
     box.querySelectorAll("[data-img]").forEach(el => el.onchange = () => pickImages(el, imgs[+el.dataset.img], drawChoices));
     box.querySelectorAll("[data-rm]").forEach(el => el.onclick = () => { const [i, j] = el.dataset.rm.split(":"); imgs[+i].splice(+j, 1); drawChoices(); });
   };
-  document.getElementById("minus").onclick = () => { if (vals.length > MIN) { vals.pop(); imgs.pop(); drawChoices(); } };
-  document.getElementById("plus").onclick = () => { if (vals.length < MAX) { vals.push(""); imgs.push([]); drawChoices(); [...box.querySelectorAll(".choice")].pop().focus(); } };
+  document.getElementById("minus").onclick = () => { if (vals.length > MIN) { vals.pop(); imgs.pop(); links.pop(); lOpen.pop(); drawChoices(); } };
+  document.getElementById("plus").onclick = () => { if (vals.length < MAX) { vals.push(""); imgs.push([]); links.push(""); lOpen.push(false); drawChoices(); [...box.querySelectorAll(".choice")].pop().focus(); } };
   drawChoices();
   const drawQ = () => {
     const prev = document.getElementById("qPrev"); prev.innerHTML = thumbs(qImgs, "q");
     prev.querySelectorAll("[data-rm]").forEach(el => el.onclick = () => { qImgs.splice(+el.dataset.rm.split(":")[1], 1); drawQ(); });
   };
   document.getElementById("qImgIn").onchange = e => pickImages(e.target, qImgs, drawQ);
+  const qLinkIn = document.getElementById("qLinkIn");
+  document.getElementById("qLinkBtn").onclick = e => { qLinkIn.hidden = false; e.target.hidden = true; qLinkIn.focus(); };
   const evIn = document.getElementById("evIn"), evStep = d => { evIn.value = Math.min(500, Math.max(1, (parseInt(evIn.value, 10) || 7) + d)); };
   document.getElementById("evMinus").onclick = () => evStep(-1);
   document.getElementById("evPlus").onclick = () => evStep(1);
@@ -568,11 +605,14 @@ function createPage() {
   cc.value = `${dflt.getFullYear()}-${pad(dflt.getMonth() + 1)}-${pad(dflt.getDate())}T${pad(dflt.getHours())}:${pad(dflt.getMinutes())}`;
   document.getElementById("f").onsubmit = async ev => {
     ev.preventDefault();
-    const btn = ev.target.querySelector("button.btn"), err = document.getElementById("e"); btn.disabled = true; err.textContent = "";
+    const btn = ev.target.querySelector("button.btn.wide"), err = document.getElementById("e"); btn.disabled = true; err.textContent = ""; // the Create poll button
     const fail = m => { err.textContent = m; btn.disabled = false; };
     const closesAt = new Date(cc.value); // datetime-local is read as local time
     if (!(closesAt > new Date())) return fail("Pick a close time in the future.");
     const options = vals.map(s => s.trim());
+    const linkFix = links.map(fixUrl), qLinkFix = fixUrl(qLinkIn.value), badLink = linkFix.findIndex(v => v && !safeUrl(v));
+    if (badLink >= 0) return fail(`The link for choice ${L(badLink)} doesn't look right. Use a full web address like https://example.com`);
+    if (qLinkFix && !safeUrl(qLinkFix)) return fail("The question's link doesn't look right. Use a full web address like https://example.com");
     if (options.some(o => !o)) return fail("Fill in every choice, or tap − to remove one.");
     if (new Set(options.map(o => o.toLowerCase())).size !== options.length) return fail("Two choices are the same.");
     const question = document.getElementById("qq").value.trim();
@@ -582,6 +622,10 @@ function createPage() {
     try {
       const r = await rpc("create_poll_open", { p_question: question, p_options: options, p_closes_at: closesAt.toISOString(), p_option_mode: mode, p_expected: expected });
       saveMyPoll({ id: r.poll_id, admin: r.admin_key, question, closes_at: closesAt.toISOString(), created_at: new Date().toISOString() });
+      if (qLinkFix || linkFix.some(Boolean)) {
+        try { await rpc("set_poll_links", { p_poll: r.poll_id, p_admin: r.admin_key, p_links: { q: qLinkFix ? safeUrl(qLinkFix).href : null, o: linkFix.map(v => v ? safeUrl(v).href : null) } }); }
+        catch (e) { toast("Poll created, but the links didn't save: " + e.message); }
+      }
       if (qImgs.length || imgs.some(a => a.length)) {
         try { await rpc("set_poll_photos", { p_poll: r.poll_id, p_admin: r.admin_key, p_images: { q: qImgs, o: imgs } }); }
         catch (e) { toast("Poll created, but the photos didn't save: " + e.message); }
@@ -697,8 +741,9 @@ function askDelete(item, id) {
 }
 
 // ---------- voting ----------
-const optCards = (options, extra = "", images = null) => `<div class="opts">${options.map((o, i) => `
-  <label class="opt${optPhotos(images, i) ? " has-img" : ""}">${gallery(optPhotos(images, i), true)}${optPhotos(images, i) ? '<span class="orow">' : ""}<input type="radio" name="c" value="${i}" required><span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="check"></span>${optPhotos(images, i) ? "</span>" : ""}</label>`).join("")}${extra}</div>`;
+const optCards = (options, extra = "", images = null, links = null) => `<div class="opts">${options.map((o, i) => {
+  const ph = optPhotos(images, i), lk = optLink(links, i), stack = ph || lk;
+  return `<label class="opt${stack ? " has-img" : ""}">${gallery(ph, true)}${stack ? '<span class="orow">' : ""}<input type="radio" name="c" value="${i}" required><span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="check"></span>${stack ? "</span>" : ""}${linkChip(lk)}</label>`; }).join("")}${extra}</div>`;
 function doneCard(icon, title, body, warn) {
   return `<div class="card done${warn ? " warn" : ""}"><div class="big">${icon}</div><h2>${esc(title)}</h2><p class="mute">${esc(body)}</p></div>`;
 }
@@ -728,7 +773,7 @@ async function openVotePage() {
     notifyCount = null;
     if (p.closed) return resultsPage();
     const pills = (p.closes_at ? countdown(p.closes_at, true) + closesPill(p.closes_at) : "") + `<span class="pill">🔒 Anonymous</span>`;
-    const head = (votes = p.votes) => hero("Blind vote", p.question, pills) + qgal(p.images) + turnout(votes, p.expected, false, p.shrunk);
+    const head = (votes = p.votes) => hero("Blind vote", p.question, pills) + qgal(p.images) + qlink(p.links) + turnout(votes, p.expected, false, p.shrunk);
     if (p.voted) {
       app.innerHTML = head() +
         doneCard("🙌", "You already voted", "This phone already voted, so this visit was logged as a blocked repeat try. Results appear here when voting closes.", true) + notifyCard();
@@ -738,7 +783,7 @@ async function openVotePage() {
     app.innerHTML = `${head()}
       <form id="f">
         ${(p.images && (p.images.o || []).some(a => a && a.length)) ? `<p class="mute" style="text-align:center;margin:0 0 10px">Tap a photo or a choice to pick it. Tap ⤢ to see a photo full size.</p>` : ""}
-        ${optCards(p.options, p.option_mode === "auto" ? `<label class="opt"><input type="radio" name="c" value="other" required><span class="letter">+</span>Other <input id="wi" maxlength="200" placeholder="type your own"><span class="check"></span></label>` : "", p.images)}
+        ${optCards(p.options, p.option_mode === "auto" ? `<label class="opt"><input type="radio" name="c" value="other" required><span class="letter">+</span>Other <input id="wi" maxlength="200" placeholder="type your own"><span class="check"></span></label>` : "", p.images, p.links)}
         <div class="row"><button class="btn wide">Submit vote</button></div><div class="err" id="e"></div>
       </form>
       ${p.option_mode === "approve" ? `<div class="card" style="margin-top:16px" id="reqCard">${req ? requestStatus(req) : `
@@ -794,14 +839,14 @@ async function resultsPage() {
     app.innerHTML = `
       ${r.is_admin ? `<a class="back" href="./#mine">← My polls</a>` : ""}
       ${hero(r.closed ? "Final results" : "Your poll · voting open", r.question, pills)}
-      ${qgal(r.images)}${turnout(r.voted, expected, r.closed, r.shrunk)}
+      ${qgal(r.images)}${qlink(r.links)}${turnout(r.voted, expected, r.closed, r.shrunk)}
       ${r.closed ? `<div style="margin:-4px 0 12px"><span class="bub ${v.k}" style="max-width:none">${esc(v.t)}</span></div>` : ""}
       ${r.closed ? "" : `<div class="notice" style="margin-bottom:12px"><span>🙈</span><div>Results are hidden from everyone, including you, until voting closes.
         <div class="mute" style="font-weight:500">You can see how many people voted, but not what they picked.</div></div></div>`}
-      <div class="opts">${r.closed ? "" : r.options.map((o, i) => resRow(r.images, i, "", `<span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="pct n">hidden</span>`)).join("")}${!r.closed ? "" : r.options.map((o, i) => {
+      <div class="opts">${r.closed ? "" : r.options.map((o, i) => resRow(r.images, i, "", `<span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="pct n">hidden</span>`, null, r.links)).join("")}${!r.closed ? "" : r.options.map((o, i) => {
         const pct = sum ? Math.round(counts[i] / sum * 100) : 0, win = top > 0 && counts[i] === top;
         return resRow(r.images, i, win ? " win" : "", `<span class="letter">${win ? "🏆" : L(i)}</span>
-          <span>${esc(o)}</span><span class="pct">${pct}% <span class="n">· ${counts[i]}</span></span>`, pct); }).join("")}</div>
+          <span>${esc(o)}</span><span class="pct">${pct}% <span class="n">· ${counts[i]}</span></span>`, pct, r.links); }).join("")}</div>
       ${r.is_admin ? `
         <div id="reqs"></div>${r.closed ? "" : notifyCard()}
         <div class="card" style="margin-top:16px"><h2>📣 Voting link</h2><p class="mute" style="margin:0 0 12px">Same link for everyone. After voting closes, it shows these results.</p>

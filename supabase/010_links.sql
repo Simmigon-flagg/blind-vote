@@ -1,0 +1,4 @@
+-- Applied to the live project as migration "poll_links".
+-- polls.links jsonb = {"q": url|null, "o": [url|null, ...]}; one optional link on the question and on each choice.
+-- _link_ok(): https only, real domain name (no IPs, no user@host), <= 500 chars.
+-- set_poll_links(poll, admin, links): creator only; locked once anyone votes. get_poll_open / get_results return "links".
