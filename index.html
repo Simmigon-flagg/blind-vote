@@ -113,7 +113,10 @@
   .opt .check { margin-left:auto; width:22px; height:22px; border-radius:50%; border:2px solid var(--line); flex-shrink:0; }
   .opt:has(input:checked) .check { border:7px solid var(--acc); }
   .imgbtn { flex-shrink:0; width:48px; height:48px; border-radius:12px; border:1.5px dashed var(--line); display:grid; place-items:center; cursor:pointer; font-size:1.15rem; }
-  .thumbs { display:flex; gap:10px; flex-wrap:wrap; margin:2px 0 12px 40px; }
+  .addph { display:inline-flex; align-items:center; gap:6px; margin:0 0 14px 40px; padding:6px 12px; border:1.5px dashed var(--line); border-radius:10px; font-size:.8rem; font-weight:700; color:var(--mute); cursor:pointer; }
+  .gi { position:relative; display:block; }
+  .gz { display:grid; place-items:center; position:absolute; right:8px; bottom:8px; width:38px; height:38px; border-radius:11px; border:0; background:rgba(0,0,0,.6); color:#fff; font-size:1.1rem; cursor:pointer; padding:0; }
+  .thumbs { display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 10px 40px; }
   #qPrev .thumbs { margin:12px 0 0; }
   .th { position:relative; }
   .th img { width:64px; height:64px; object-fit:cover; border-radius:12px; display:block; cursor:zoom-in; }
@@ -308,11 +311,14 @@ async function shrinkImage(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 // Photos: poll.images = { q: [url…], o: [[url…], …] }. A choice with photos stacks them above its row.
-const gallery = list => !list || !list.length ? "" : `<div class="gal n${Math.min(list.length, 2)}">${list.map((src, j) => `<img src="${esc(src)}" alt="" data-zoom="${j}">`).join("")}</div>`;
+// pick = inside a choice card: tapping the photo picks that choice, and the ⤢ corner button opens it full size.
+const gallery = (list, pick) => !list || !list.length ? "" : `<div class="gal n${Math.min(list.length, 2)}">${list.map((src, j) => pick
+  ? `<span class="gi"><img src="${esc(src)}" alt=""><span role="button" tabindex="0" class="gz" data-zoom="${j}" aria-label="See full size">⤢</span></span>`
+  : `<img src="${esc(src)}" alt="" data-zoom="${j}">`).join("")}</div>`;
 const optPhotos = (images, i) => images && images.o && images.o[i] && images.o[i].length ? images.o[i] : null;
 const anyPhotos = images => !!images && (((images.q || []).length > 0) || (images.o || []).some(a => a && a.length));
 const qgal = images => (images && images.q && images.q.length ? `<div class="qgal">${gallery(images.q)}</div>` : "") +
-  (anyPhotos(images) ? `<p class="mute" style="text-align:center;margin:-4px 0 12px">Tap a photo to see it full size.</p>` : "");
+  (images && images.q && images.q.length ? `<p class="mute" style="text-align:center;margin:-4px 0 12px">Tap the photo to see it full size.</p>` : "");
 const resRow = (images, i, cls, inner, pct) => { const ph = optPhotos(images, i);
   return `<div class="res${cls}${ph ? " has-img" : ""}">${pct == null ? "" : `<div class="fill" style="width:${pct}%"></div>`}${gallery(ph)}${ph ? '<span class="orow">' : ""}${inner}${ph ? "</span>" : ""}</div>`; };
 // Full-size viewer: tap any photo. ‹ › move between photos in the same group; tap anywhere else to close.
@@ -495,12 +501,12 @@ function createPage() {
     <form id="f">
       <div class="card">
         <div class="field"><label class="f" for="qq">Question</label><input id="qq" maxlength="500" placeholder="What should we decide?" required>
-          <div class="row" style="margin-top:10px"><label class="btn ghost sm">📷 Add photos<input type="file" accept="image/*" multiple id="qImgIn" hidden></label></div><div id="qPrev"></div></div>
+          <div class="row" style="margin-top:10px"><label class="btn ghost sm">📷 Add photos to the question<input type="file" accept="image/*" multiple id="qImgIn" hidden></label></div><div id="qPrev"></div></div>
         <div class="field">
           <div class="count"><label class="f">Choices</label>
             <div class="stepper"><button type="button" id="minus" aria-label="Fewer choices">−</button><b id="num">2</b><button type="button" id="plus" aria-label="More choices">+</button></div></div>
           <div id="choices"></div>
-          <div class="hint">Each choice can be a word, a name, or a whole sentence. Tap 📷 to add photos (up to 4 each).</div>
+          <div class="hint">Each choice can be a word, a name, or a whole sentence. Up to 4 photos per choice.</div>
         </div>
       </div>
       <div class="card">
@@ -538,8 +544,7 @@ function createPage() {
   };
   const thumbs = (list, key) => !list.length ? "" : `<div class="thumbs">${list.map((src, j) => `<span class="th"><img src="${src}" alt="" data-zoom="${j}"><button type="button" data-rm="${key}:${j}" aria-label="Delete photo">✕</button></span>`).join("")}</div>`;
   const drawChoices = () => {
-    box.innerHTML = vals.map((v, i) => `<div class="choice-in"><span class="letter">${L(i)}</span><input class="choice" data-i="${i}" maxlength="200" placeholder="${esc(EXAMPLES[i] || "Type a word or a short sentence")}" value="${esc(v)}" required>
-      <label class="imgbtn" title="Add photos to this choice">📷<input type="file" accept="image/*" multiple data-img="${i}" hidden></label></div>${thumbs(imgs[i], i)}`).join("");
+    box.innerHTML = vals.map((v, i) => `<div class="choice-in"><span class="letter">${L(i)}</span><input class="choice" data-i="${i}" maxlength="200" placeholder="${esc(EXAMPLES[i] || "Type a word or a short sentence")}" value="${esc(v)}" required></div>${thumbs(imgs[i], i)}${imgs[i].length >= MAXP ? `<div style="height:8px"></div>` : `<label class="addph">📷 ${imgs[i].length ? "Add more photos" : "Add photos"} for choice ${L(i)}<input type="file" accept="image/*" multiple data-img="${i}" hidden></label>`}`).join("");
     document.getElementById("num").textContent = vals.length;
     document.getElementById("minus").disabled = vals.length <= MIN;
     document.getElementById("plus").disabled = vals.length >= MAX;
@@ -693,7 +698,7 @@ function askDelete(item, id) {
 
 // ---------- voting ----------
 const optCards = (options, extra = "", images = null) => `<div class="opts">${options.map((o, i) => `
-  <label class="opt${optPhotos(images, i) ? " has-img" : ""}">${gallery(optPhotos(images, i))}${optPhotos(images, i) ? '<span class="orow">' : ""}<input type="radio" name="c" value="${i}" required><span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="check"></span>${optPhotos(images, i) ? "</span>" : ""}</label>`).join("")}${extra}</div>`;
+  <label class="opt${optPhotos(images, i) ? " has-img" : ""}">${gallery(optPhotos(images, i), true)}${optPhotos(images, i) ? '<span class="orow">' : ""}<input type="radio" name="c" value="${i}" required><span class="letter">${L(i)}</span><span>${esc(o)}</span><span class="check"></span>${optPhotos(images, i) ? "</span>" : ""}</label>`).join("")}${extra}</div>`;
 function doneCard(icon, title, body, warn) {
   return `<div class="card done${warn ? " warn" : ""}"><div class="big">${icon}</div><h2>${esc(title)}</h2><p class="mute">${esc(body)}</p></div>`;
 }
@@ -732,6 +737,7 @@ async function openVotePage() {
     const req = p.my_request;
     app.innerHTML = `${head()}
       <form id="f">
+        ${(p.images && (p.images.o || []).some(a => a && a.length)) ? `<p class="mute" style="text-align:center;margin:0 0 10px">Tap a photo or a choice to pick it. Tap ⤢ to see a photo full size.</p>` : ""}
         ${optCards(p.options, p.option_mode === "auto" ? `<label class="opt"><input type="radio" name="c" value="other" required><span class="letter">+</span>Other <input id="wi" maxlength="200" placeholder="type your own"><span class="check"></span></label>` : "", p.images)}
         <div class="row"><button class="btn wide">Submit vote</button></div><div class="err" id="e"></div>
       </form>
